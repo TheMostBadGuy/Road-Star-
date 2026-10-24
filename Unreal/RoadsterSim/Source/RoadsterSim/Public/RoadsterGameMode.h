@@ -11,4 +11,5 @@ class ROADSTERSIM_API ARoadsterGameMode : public AGameModeBase
 
 public:
 	ARoadsterGameMode();
+	virtual void StartPlay() override;
 };
