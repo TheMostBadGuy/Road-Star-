@@ -1,0 +1,11 @@
+Unreal/RoadsterSim/Binaries/
+Unreal/RoadsterSim/Intermediate/
+Unreal/RoadsterSim/Saved/
+Unreal/RoadsterSim/DerivedDataCache/
+Unreal/RoadsterSim/.vs/
+Unreal/RoadsterSim/*.sln
+Unreal/RoadsterSim/*.slnx
+Build/
+Blender/renders/
+*.blend1
+__pycache__/

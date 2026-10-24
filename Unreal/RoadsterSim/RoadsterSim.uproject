@@ -1,0 +1,27 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.7",
+	"Category": "",
+	"Description": "Tesla Roadster (2nd gen) driving simulator with fan downforce, cold-gas thrusters and an inverted-track builder.",
+	"Modules": [
+		{
+			"Name": "RoadsterSim",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine",
+				"CoreUObject"
+			]
+		}
+	],
+	"Plugins": [
+		{ "Name": "EnhancedInput", "Enabled": true },
+		{ "Name": "ProceduralMeshComponent", "Enabled": true },
+		{ "Name": "PythonScriptPlugin", "Enabled": true },
+		{ "Name": "EditorScriptingUtilities", "Enabled": true },
+		{ "Name": "Niagara", "Enabled": true },
+		{ "Name": "ModelingToolsEditorMode", "Enabled": false },
+		{ "Name": "Bridge", "Enabled": false }
+	],
+	"TargetPlatforms": [ "Windows" ]
+}
