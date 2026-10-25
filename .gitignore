@@ -13,3 +13,16 @@ DDC/
 Blender/renders_v*/
 Tests/*.exe
 Tests/*.obj
+
+# large binary references, captures and candidate builds (kept on disk, not in git)
+Reference/
+SourceAssets/
+WorldAssets/
+Verification-*/
+AssetAudit-*/
+Blender/candidate_test/
+Blender/renders_*/
+Temp/
+Backups/
+Tests/Audit-*/*.exe
+Tests/Audit-*/*.obj

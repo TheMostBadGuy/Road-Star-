@@ -141,6 +141,8 @@ def new_mesh_object(name, bm, mats, smooth=35.0, pivot=None):
     bm.free()
     for m in mats:
         me.materials.append(m)
+    if me.uv_layers:
+        me.uv_layers[0].name = "UVMap"
     me.shade_smooth()
     me.set_sharp_from_angle(angle=math.radians(smooth))
     ob = bpy.data.objects.new(name, me)
@@ -1048,8 +1050,8 @@ def build_disc(M, key):
     for i in range(12):
         ph = 2 * math.pi * (i + 0.5) / 12
         c0 = W(r_i - 0.0005, ph, yo - 0.0075)
-        c1 = W(r_i - 0.0005, ph, yo + 0.0018)
-        fs = cylinder(bm, c0, c1, 0.0058, segs=8, mat=2, bevel=0.0008)
+        c1 = W(r_i - 0.0005, ph, yo - 0.0003)          # flush with the friction face (pads run 0.5 mm clear)
+        fs = cylinder(bm, c0, c1, 0.0052, segs=8, mat=2, bevel=0.0008)
         recalc(bm, fs)
     # hub flange and bearing hub (spins)
     prof = [(0.030, et - 0.0065), (0.072, et - 0.0065), (0.072, et - 0.017), (0.046, et - 0.022),
@@ -1146,14 +1148,14 @@ def build_caliper(M, key):
         fs = cylinder(bm, p0, p1, 0.0085, segs=6, mat=3, bevel=0.0006)
         recalc(bm, fs)
     # bleed nipples on the upper end of both halves, with dust caps
-    s_b = hl - 0.026
+    s_b = hl - 0.019                                   # upper end, where the kidney top is lowest
     top_b = ht0 - 0.010 * (s_b / hl) ** 2
     for sg in (1, -1):
         a = y_d + sg * 0.052
         p0 = bend(s_b, top_b - 0.002, a)
-        p1 = bend(s_b, top_b + 0.004, a)
-        p2 = bend(s_b, top_b + 0.011, a)
-        p3 = bend(s_b, top_b + 0.016, a)
+        p1 = bend(s_b, top_b + 0.0035, a)
+        p2 = bend(s_b, top_b + 0.0075, a)
+        p3 = bend(s_b, top_b + 0.0110, a)
         for fs in (cylinder(bm, p0, p1, 0.0052, segs=6, mat=3, bevel=0.0005),
                    cylinder(bm, p1, p2, 0.0030, segs=10, mat=3),
                    cylinder(bm, p2, p3, 0.0042, segs=12, mat=1, bevel=0.001)):
@@ -1844,7 +1846,7 @@ def rig_description(corners):
         sp = objs["Spring"]
         parts.append(dict(name=C + "Spring", pivot=vl(sp.location), joint="aim_scale",
                           static_dir=vl((hp["DP"] - hp["DI"]).normalized()), scale_axis="Y",
-                          target="table.DP", pivot_follows="damper body (moves with Susp_%sDamper's rotation about "
+                          target="table.DP", pivot_follows="damper body (moves with %sDamper's rotation about "
                                                            "its pivot)" % C, table="spring_scale",
                           free_length_m=round(sp["free_length"], 5), driven_by="rocker"))
         parts.append(dict(name=C + "Mounts", pivot=[0, 0, 0], joint="static"))

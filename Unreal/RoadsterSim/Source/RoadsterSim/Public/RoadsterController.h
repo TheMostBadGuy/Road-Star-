@@ -48,6 +48,11 @@ private:
 	TArray<float> ShotTimes;
 	float PlayTime = 0.f;
 	int32 ShotIndex = 0;
+	float ExitAfter = 0.f;
+	float MeasuredFrameTime = 0.f;
+	int32 MeasuredFrames = 0;
+	TArray<float> ReviewFrameTimes;
+	FString ShotDirectory;
 	float TelemetryTimer = 0.f;
 	void AutopilotInput(float Dt);
 	void LogTelemetry(float Dt);

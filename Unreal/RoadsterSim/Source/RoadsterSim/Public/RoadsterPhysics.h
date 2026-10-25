@@ -215,6 +215,11 @@ namespace Roadster
 		double FanMaxPowerKW = 80;        // 4 x 20 kW (EXEC)
 		double FanCentreForward = -0.20;
 		double FanMaxReach = 0.55;
+		// EST: five probes approximate a shared sealed plenum, not a Tesla floor scan.
+		// 2.70 x 1.56 m matches the estimated 4.2 m2 effective floor area.
+		double FanProbeHalfLength = 1.35, FanProbeHalfWidth = 0.78;
+		double FanOpenEdgeLeakGap = 0.12; // EST equivalent leak gap when part of the floor has no nearby surface
+		double FanMinSurfaceAlignment = 0.5; // reject back faces and surfaces >60 degrees from the floor normal
 
 		// Cold-gas thrusters (Thrust / Rocket trims)
 		double TankFullBar = 379;          // 5,500 psi as shown full ("100% - Boost Ready") in Tesla's UI
@@ -637,19 +642,44 @@ namespace Roadster
 				case FanMode::Custom: targetKPa = Clamp(Set.FanCustomKPa, 0, S.FanMaxPressureKPa); break;
 				}
 				if (fan != FanMode::Custom) targetKPa *= loadScale;
+				// A sealed floor still needs electric fan power. With a depleted battery, let
+				// the rotor coast down through the same spool response instead of supplying
+				// unlimited suction at zero stored energy. Demo battery mode remains powered.
+				if (EnergyKWh <= 0.0 && !Set.bInfiniteBattery) targetKPa = 0.0;
 				// skirts deploy whenever the fans are asked for meaningful suction
 				SkirtDeploy = MoveTo(SkirtDeploy, targetKPa > 0.8 ? 1.0 : 0.0, h * 4.0);
 
 				const double floorH = S.RideHeight - (Set.bLowSuspension ? S.LowRideDrop : 0.0);
-				const V3 floorPt = BodyToWorld({ S.FanCentreForward, 0, floorH + 0.05 });
-				const Hit fh = trace(floorPt, -up, S.FanMaxReach + 0.05, 0.0);
-				double gap = 10.0, seal = 0.0;
-				if (fh.bHit)
+				const V3 offsets[5] = { {0, 0, 0},
+					{ -S.FanProbeHalfLength, -S.FanProbeHalfWidth, 0 }, { -S.FanProbeHalfLength, S.FanProbeHalfWidth, 0 },
+					{ S.FanProbeHalfLength, -S.FanProbeHalfWidth, 0 }, { S.FanProbeHalfLength, S.FanProbeHalfWidth, 0 } };
+				double gap = 0.0, leakSquared = 0.0, seal = 0.0;
+				int sealedProbes = 0;
+				// Start inside the body, rather than near its underside: on a tight curved
+				// tunnel the nearby floor can cross a low corner-ray origin. This is only
+				// query clearance; the endpoint stays FanMaxReach below the same floor reference.
+				const double probeLift = 0.25;
+				const double reach = S.FanMaxReach + probeLift;
+				for (const V3& offset : offsets)
 				{
-					const double clearance = fh.Dist - 0.05;
-					gap = std::max(S.SkirtResidualGap, clearance - S.SkirtDeployMax * SkirtDeploy);
-					seal = 1.0 / (1.0 + std::pow(gap / S.FanSealGapScale, 2.0));
+					const V3 floorPt = BodyToWorld(V3(S.FanCentreForward, 0, floorH + probeLift) + offset);
+					const Hit fh = trace(floorPt, -up, reach, 0.0);
+					double probeGap = S.FanOpenEdgeLeakGap;
+					const double alignment = fh.Normal.Norm().Dot(up);
+					if (fh.bHit && std::isfinite(fh.Dist) && fh.Dist >= 0.0 && fh.Dist <= reach &&
+						std::isfinite(alignment) && alignment >= S.FanMinSurfaceAlignment)
+					{
+						const double clearance = fh.Dist - probeLift;
+						probeGap = std::max(S.SkirtResidualGap, clearance - S.SkirtDeployMax * SkirtDeploy);
+						++sealedProbes;
+					}
+					gap = std::max(gap, probeGap);
+					leakSquared += probeGap * probeGap;
 				}
+				// Shared-plenum estimate: a large local leak reduces pressure everywhere.
+				// Averaging leak conductance (gap squared) prevents a central hit from
+				// retaining full suction while a corner hangs over a seam or track edge.
+				if (sealedProbes > 0) seal = 1.0 / (1.0 + leakSquared / (5.0 * S.FanSealGapScale * S.FanSealGapScale));
 				const double rpmTarget = S.FanMaxRPM * std::sqrt(Clamp(targetKPa / S.FanMaxPressureKPa, 0, 1));
 				FanRPM += (rpmTarget - FanRPM) * Clamp(h / S.FanSpoolTime, 0, 1);
 				const double rpmFrac = FanRPM / S.FanMaxRPM;
@@ -659,7 +689,7 @@ namespace Roadster
 				// fan law: power ~ rpm^3, a sealed fan moves less air
 				fanPowerKW = S.FanMaxPowerKW * rpmFrac * rpmFrac * rpmFrac * (0.55 + 0.45 * (1.0 - seal));
 				T.FanRPM = FanRPM; T.FanPressureKPa = dP / 1000.0; T.FanTargetKPa = targetKPa;
-				T.FanDownforceN = downforce; T.FanSeal = seal; T.FanGap = fh.bHit ? gap : -1;
+				T.FanDownforceN = downforce; T.FanSeal = seal; T.FanGap = sealedProbes > 0 ? gap : -1;
 				T.FanPowerKW = fanPowerKW; T.SkirtDeploy = SkirtDeploy;
 			}
 
@@ -812,7 +842,14 @@ namespace Roadster
 				const double mechKW = (std::fabs(rearReq[0] * Wheels[2].Omega) + std::fabs(rearReq[1] * Wheels[3].Omega)) / 1000.0;
 				const double elecKW = mechKW / S.DrivetrainEfficiency + fanPowerKW + S.AuxLoadKW;
 				const double avail = (EnergyKWh > 0.2 || Set.bInfiniteBattery ? S.BatteryMaxDischargeKW : 0.0) * Clamp(0.55 + 0.45 * SOC() / 0.3, 0, 1);
-				if (elecKW > avail && mechKW > 1e-3)
+				// At rest mechanical power is zero even with a torque request. An empty
+				// battery must also remove that stalled torque, or it repeatedly nudges
+				// the car forward whenever wheel speed falls below the power threshold.
+				if (avail <= 0.0)
+				{
+					rearReq[0] = rearReq[1] = 0.0;
+				}
+				else if (elecKW > avail && mechKW > 1e-3)
 				{
 					const double s = Clamp((avail - fanPowerKW - S.AuxLoadKW) * S.DrivetrainEfficiency / mechKW, 0, 1);
 					rearReq[0] *= s; rearReq[1] *= s;

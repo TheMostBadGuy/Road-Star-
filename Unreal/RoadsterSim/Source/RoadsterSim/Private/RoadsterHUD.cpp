@@ -264,7 +264,7 @@ void ARoadsterHUD::DrawBuilder(ARoadsterController* PC, ARoadsterPawn* P)
 	if (Sel >= 0)
 	{
 		const FTransform T = Tr->GetActorTransform();
-		FVector2D Prev; bool bHave = false;
+		FVector2D Prev = FVector2D::ZeroVector; bool bHave = false;
 		const float S = Canvas->ClipY / FContext::VH;
 		for (const FTrackSample& Sm : Tr->GetSamples())
 		{

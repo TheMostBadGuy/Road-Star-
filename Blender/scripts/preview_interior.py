@@ -25,9 +25,11 @@ argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 flags = {a for a in argv if a.startswith("--")}
 pos = [a for a in argv if not a.startswith("--")]
 ONLY = None
+for opt in ("--only", "--fbx"):
+    if opt in argv:
+        pos = [a for a in pos if a != argv[argv.index(opt) + 1]]
 if "--only" in argv:
     ONLY = set(argv[argv.index("--only") + 1].split(","))
-    pos = [a for a in pos if a != argv[argv.index("--only") + 1]]
 OUT = pos[0] if pos else os.path.normpath(os.path.join(HERE, "..", "renders_interior"))
 QUICK = "--quick" in flags
 os.makedirs(OUT, exist_ok=True)
@@ -105,7 +107,7 @@ def lights():
     world.use_nodes = True
     bg = world.node_tree.nodes["Background"]
     bg.inputs["Color"].default_value = (0.42, 0.43, 0.45, 1)
-    bg.inputs["Strength"].default_value = 0.45
+    bg.inputs["Strength"].default_value = 0.18
     sc.world = world
     def area(name, loc, target, energy, size, color=(1, 1, 1)):
         ld = bpy.data.lights.new(name, 'AREA')
@@ -117,9 +119,21 @@ def lights():
         ob.location = loc
         look_at(ob, target)
         return ob
-    area("SkyFront", (3.2, 0.0, 2.2), (0.6, 0.0, 0.8), 450, 3.0)           # overcast through the windshield
-    area("CabinTop", (-0.05, 0.0, 1.05), (0.0, 0.0, 0.2), 30, 0.9)         # soft studio light over the seats
-    area("RearFill", (-1.0, 0.0, 0.95), (0.8, 0.0, 0.7), 10, 0.5)
+    area("SkyFront", (3.2, 0.0, 2.2), (0.6, 0.0, 0.8), 160, 3.0)           # overcast through the windshield
+    area("CabinTop", (-0.05, 0.0, 1.05), (0.0, 0.0, 0.2), 28, 0.9)         # soft studio light over the seats
+    area("RearFill", (-1.0, 0.0, 0.95), (0.8, 0.0, 0.7), 8, 0.5)
+    # bright studio backdrop seen through the windshield (Slide-4 shows a pale grey wall ahead of the car)
+    me = bpy.data.meshes.new("Backdrop")
+    me.from_pydata([(4.5, -2.6, -0.5), (4.5, 2.6, -0.5), (4.5, 2.6, 3.0), (4.5, -2.6, 3.0)], [], [(0, 3, 2, 1)])
+    bd = bpy.data.objects.new("Backdrop", me)
+    sc.collection.objects.link(bd)
+    m = bpy.data.materials.new("PV_Backdrop")
+    m.use_nodes = True
+    b = m.node_tree.nodes.get("Principled BSDF")
+    b.inputs["Base Color"].default_value = (0.0, 0.0, 0.0, 1)
+    b.inputs["Emission Color"].default_value = (0.55, 0.57, 0.6, 1)
+    b.inputs["Emission Strength"].default_value = 1.0
+    me.materials.append(m)
 
 
 def setup_render(sc, workbench=False):
@@ -230,6 +244,38 @@ def main():
                 v = ob.data.vertices[ob.data.loops[li].vertex_index].co
                 print("UV %s %s -> world %s" % (nm, tuple(round(c, 3) for c in uv[li].uv), tuple(round(c, 3) for c in (mw @ v))))
 
+    # UV sanity: every face needs a non-degenerate UV footprint (carbon / suede / perforation tile on UV0)
+    for nm, ob in parts.items():
+        me = ob.data
+        uv = me.uv_layers[0].data if me.uv_layers else None
+        bad = 0
+        for poly in me.polygons:
+            if uv is None:
+                bad += 1
+                continue
+            pts = [uv[li].uv for li in poly.loop_indices]
+            a = 0.0
+            for i in range(len(pts)):
+                a += pts[i].x * pts[(i + 1) % len(pts)].y - pts[(i + 1) % len(pts)].x * pts[i].y
+            if abs(a) < 1e-12:
+                bad += 1
+        print("UVCHECK %-18s faces %6d  zero-area UV faces %d  uv layers %d" % (nm, len(me.polygons), bad, len(me.uv_layers)))
+    if "--fbx" in argv:
+        fbx_dir = argv[argv.index("--fbx") + 1]
+        os.makedirs(fbx_dir, exist_ok=True)
+        for nm, ob in parts.items():
+            saved = ob.location.copy(), ob.rotation_euler.copy()
+            if nm == "Yoke":                      # moving part: exported about its pivot, like build_roadster.export_fbx
+                ob.location = (0, 0, 0); ob.rotation_euler = (0, 0, 0)
+            for o in bpy.context.selected_objects:
+                o.select_set(False)
+            ob.select_set(True)
+            bpy.context.view_layer.objects.active = ob
+            path = os.path.join(fbx_dir, "SM_%s.fbx" % nm)
+            bpy.ops.export_scene.fbx(filepath=path, use_selection=True, apply_scale_options='FBX_SCALE_UNITS', axis_forward='X', axis_up='Z',
+                                     object_types={'MESH'}, use_mesh_modifiers=True, mesh_smooth_type='FACE', bake_space_transform=True, add_leaf_bones=False)
+            ob.location, ob.rotation_euler = saved
+            print("FBX %s %d bytes" % (path, os.path.getsize(path)))
     # preview-only screen content (checks the UV orientation)
     ui = os.path.join(REF, "ui_frames")
     parts["Screen_Display"].data.materials[0] = preview_screen_material("PV_Screen", os.path.join(ui, "ui_t20_trackmode_dashboard.jpg"), 2.5)
@@ -240,7 +286,7 @@ def main():
     wb = "--workbench" in flags
     setup_render(sc, wb)
     # Slide-4 camera: centreline, level with vertical lens shift (verticals stay vertical in the photo), ~16 mm.
-    s4 = camera("Cam_Slide4", (-0.50, 0.012, 0.865), rot=(math.radians(90), 0, math.radians(-90)), lens=16.0, shift=(0.0, -0.075))
+    s4 = camera("Cam_Slide4", (-0.40, 0.012, 0.865), rot=(math.radians(90), 0, math.radians(-90)), lens=14.45, shift=(0.0, -0.075))
     pov = camera("Cam_DriverPOV", tuple(RI.EYE), rot=(math.radians(90 - 6), 0, math.radians(-90)), fov=80.0)
     seat = camera("Cam_Seat", (0.50, 0.02, 0.86), target=(-0.06, 0.38, 0.45), lens=26.0)
     yoke = camera("Cam_Yoke", (0.12, 0.30, 0.96), target=(0.50, 0.38, 0.78), lens=42.0)
@@ -266,6 +312,8 @@ def main():
         body.hide_render = False
     sc.display.shading.show_backface_culling = True
     render(sc, pov, "backfaces", 1600, 900)
+    render(sc, s4, "backfaces_slide4", 1600, 756)
+    render(sc, seat, "backfaces_seat", 1200, 750)
     sc.display.shading.show_backface_culling = False
     if "--save" in flags:
         bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, "interior_preview.blend"))

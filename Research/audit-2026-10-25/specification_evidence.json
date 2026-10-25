@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "access_date": "2026-10-25",
+  "vehicle": "Tesla next-generation Roadster, October 2026 reveal, Rocket augment",
+  "purpose": "Evidence registry. Do not load uncertain values as authoritative production calibration.",
+  "sources": {
+    "tesla_product": {"url": "https://www.tesla.com/roadster?trk=public_post_comment-text", "kind": "manufacturer", "access": "current search index body; direct extraction only footnotes; raw HTTP 403"},
+    "tesla_q3_filing": {"url": "https://ir.tesla.com/_flysystem/s3/sec/000162828026066738/tsla-20261021-gen.pdf", "kind": "manufacturer_filing", "access": "retrieved"},
+    "topgear_visit": {"url": "https://www.topgear.com/car-news/electric/tesla-roadster-has-finally-landed-thrusters-0-60mph-059s-and-flight", "kind": "first_hand_interview_report", "access": "retrieved"},
+    "topgear_video": {"url": "https://www.youtube.com/watch?v=JdkIOhFmbKI", "kind": "primary_interview", "access": "official embed resolved; transcript not retrieved"},
+    "tesla_ui_video": {"url": "https://x.com/Tesla/status/2113730362232680854", "kind": "manufacturer_video", "access": "HTTP403; pre-existing local extracted frames inspected; provenance inherited"},
+    "nasa_thrust": {"url": "https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/rocket-thrust-equation/", "kind": "physics_reference", "access": "retrieved"},
+    "nasa_impulse": {"url": "https://www1.grc.nasa.gov/beginners-guide-to-aeronautics/specific-impulse/", "kind": "physics_reference", "access": "retrieved"}
+  },
+  "claims": [
+    {"key":"development_state","value":"design development","status":"manufacturer_filing","source":"tesla_q3_filing"},
+    {"key":"reveal_date","value":"2026-10-15","status":"manufacturer_filing","source":"tesla_q3_filing"},
+    {"key":"rocket_seats","value":1,"status":"manufacturer_claim","source":"tesla_product"},
+    {"key":"cockpit_displays","value":{"center":1,"forward":2},"status":"manufacturer_claim","source":"tesla_product"},
+    {"key":"drive","value":"two rear motors, rear wheel drive","status":"executive_preview_claim","source":"topgear_visit"},
+    {"key":"performance_power_kW","value":1000,"status":"executive_preview_claim_approximate","source":"topgear_visit"},
+    {"key":"lightest_variant_mass_target_kg","value":1700,"relation":"less_than","status":"target_not_rocket_curb_mass","source":"topgear_visit"},
+    {"key":"range_target_miles","value":[310,320],"status":"executive_preview_claim","source":"topgear_visit"},
+    {"key":"dc_charging_target_kW","value":500,"status":"executive_preview_claim_approximate","source":"topgear_visit"},
+    {"key":"rear_vessel_volume_liters","value":200,"status":"executive_preview_claim","source":"topgear_visit"},
+    {"key":"rocket_additional_vessel_liters","value":400,"status":"executive_preview_claim","source":"topgear_visit"},
+    {"key":"rocket_total_vessel_liters","value":600,"status":"executive_preview_claim","source":"topgear_visit"},
+    {"key":"rocket_thruster_count","value":10,"status":"executive_preview_claim","source":"topgear_visit"},
+    {"key":"rocket_zero_to_sixty_target_seconds","value":0.59,"status":"executive_preview_target_not_independent_measurement","source":"topgear_visit","test_conditions":"not standardized by this audit"},
+    {"key":"wheelbase_mm","value":2825,"status":"executive_reported_pending_direct_timestamp_check","source":"topgear_video","timestamp_hint":"00:16:30-00:16:36"},
+    {"key":"body_width_mm","value":2000,"status":"executive_reported_approximate_pending_direct_timestamp_check","source":"topgear_video","timestamp_hint":"00:34:50-00:34:54"},
+    {"key":"body_length_mm","value":null,"status":"not_published_in_retrieved_primary_sources","prior_photo_estimate":4380,"estimate_uncertainty_mm":80},
+    {"key":"body_height_mm","value":null,"status":"not_published_in_retrieved_primary_sources","prior_photo_estimate":1170,"estimate_uncertainty_mm":40},
+    {"key":"fan_modes","value":["Off","Braking","Low Drag","Max Grip"],"status":"observed_in_preexisting_primary_video_frame","source":"tesla_ui_video","local_frame":"../images/ui_frames/ui_t18_trackmode_setup_custom.jpg"},
+    {"key":"thruster_pressure_display_example_psi","value":5500,"status":"observed_UI_example_not_storage_rating","source":"tesla_ui_video"},
+    {"key":"tire_pressure_display_example_psi","value":28,"status":"observed_UI_example_not_recommended_pressure","source":"tesla_ui_video"}
+  ],
+  "unknowns": ["final Rocket curb mass and mass distribution","verified production length/height/axle tracks","center of gravity and inertia tensor","usable battery capacity","official aero coefficients and fan maps","sealed floor area and leakage calibration","nozzle throat/exit geometry and regulator control","validated gas thermodynamics and fill specification","tire force/thermal data","steer-by-wire feedback calibration","screen hardware dimensions/resolution and complete production firmware"],
+  "simulation_parameter_disclosures": {
+    "fan_pressure_kPa": "simulation calibration, not official specification",
+    "fan_effective_area_m2": "simulation geometry estimate",
+    "tire_optimal_hot_pressure": "simulation calibration; 28 PSI UI example is insufficient evidence",
+    "cold_gas_max_pressure": "independent provenance required; do not infer from 5500 PSI screen",
+    "pressure_control_UI": "simulator extension unless manufacturer interaction shown",
+    "refill_time_acceleration": "convenience mode; disclose when faster than reported physical refill",
+    "geometry_accuracy": "photo based unless measured against manufacturer CAD"
+  }
+}

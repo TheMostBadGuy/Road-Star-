@@ -1,5 +1,7 @@
 # Tesla Roadster Simulator (2026 reveal car)
 
+**Current acceptance state (25 October 2026):** working research/driving prototype under active development. The source and rendered gameplay are being verified; exact manufacturer fidelity and the requested Forza-level visual target have not been achieved or certified. Read [GOAL_PROGRESS.md](GOAL_PROGRESS.md) for the latest checkpoint and [the current primary-source audit](Research/audit-2026-10-25/PRIMARY_SOURCE_AUDIT.md) before relying on figures in the older dossier.
+
 A driving simulator of the second-generation Tesla Roadster as it was revealed on 15 Oct 2026, built with
 Blender (car and terrain models) and Unreal Engine 5.7 (C++, Lumen hardware ray tracing, Nanite).
 It covers all three trims (Performance, Thrust, Rocket), the suction fans, active aero, cold-gas thrusters,
@@ -58,7 +60,7 @@ with length, radius, bank and roll for each piece. Tracks save as JSON in `Saved
 | Layout | 2 rear motors, RWD, torque vectoring | same |
 | Power | 2 x 520 kW | >1,000 kW |
 | 0-60 mph, Performance (fans, no thrusters) | 1.51 s | <1.6 s |
-| 0-60 mph, Thrust (1 ft rollout) | 0.66 s (0.56 s) | 0.81 s measured, 0.55 s with rollout |
+| 0-60 mph, Thrust | 0.80 s in current diagnostic harness | Reveal and interview claims; test conditions vary |
 | 0-60 mph, Rocket | 0.59 s | <0.59 s |
 | Top speed (limited) | 232 mph | >230 mph |
 | Fan suction | 4 fans, 80 kW, 7.5 kPa, 31 kN | "~2 g" cornering below ~80 km/h |
@@ -67,9 +69,9 @@ with length, radius, bank and roll for each piece. Tracks save as JSON in `Saved
 | Thrusters | 379 bar (5,500 psi) nitrogen COPV | 5,500 psi on the UI |
 | Tires | 295/30 R20 front, 335/30 R21 rear | same |
 
-Physics runs at 1 kHz in `Source/RoadsterSim/Public/RoadsterPhysics.h`: rigid body with raycast suspension,
+Physics uses 1 ms integration steps in `Source/RoadsterSim/Public/RoadsterPhysics.h`: rigid body with raycast suspension,
 combined-slip tire model with pressure and temperature, ABS/TCS/ESC, fan suction with skirt seal, wing aero
-and a real-gas tank model for the thrusters. `Tests/PhysicsHarness.cpp` checks the figures in the table above.
+and a real-gas tank model for the thrusters. `Tests/PhysicsHarness.cpp` prints diagnostic figures; it does not enforce acceptance. `Tests/Audit-20261025/AuditChecks.cpp` adds behavioral acceptance checks. The runtime currently caps incoming frame time at 50 ms, so sustained frame rates below 20 fps slow simulated time. Parameters are estimates, not validated Tesla tire/aero/control data.
 
 ## Project layout
 
@@ -81,6 +83,7 @@ and a real-gas tank model for the thrusters. `Tests/PhysicsHarness.cpp` checks t
 
 ## Notes
 
-- Tesla published no dimension sheet. The body was measured from Tesla's official photos (wheelbase 2.825 m).
-  Figures that executives gave inconsistently are flagged in the dossier.
+- No complete dimension sheet was retrieved. The 2.825 m wheelbase has an executive-interview timestamp lead pending direct verification; body length/height remain photo estimates. The 5,500 PSI screen readout is an example UI state, not a verified vessel rating.
+- Exact copies of both supplied models are preserved under `SourceAssets/UserSupplied-20261025`, with an audit in `AssetAudit-20261025`. The supplied OBJ lacks materials/UVs and articulated parts; CollegeRaimon is a stylized campus. Neither is currently substituted for the reference-based car or photoreal world target.
+- The fan pressure controls, detailed Gas Lab, refill shortcuts and unlimited-resource modes are simulator extensions. The Listen/Climate/navigation pages are partial demonstrations rather than complete Tesla services or production firmware. No force-feedback wheel calibration has been validated.
 - The console variable `roadster.Log 1` (or `2`) turns on telemetry logging. Launching with `-autodrive` starts the autopilot.

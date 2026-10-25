@@ -36,13 +36,15 @@ FLOOR = 0.150                             # top of the carbon tub floor (body fl
 YOKE_PIVOT = V((0.62, 0.38, 0.72))        # = YokeBase in RoadsterPawn.cpp (B2U(0.62, 0.38, 0.72))
 YOKE_PITCH = math.radians(24.0)           # column axis points forward and 24 deg down (UE pitch -24)
 YOKE_SETBACK = 0.10                       # rim centre 10 cm behind the pivot, towards the driver (Slide-4 fit + reach)
-X_HEADER = 0.26                           # windshield header (Slide-4 fit: header ~9 deg above the driver's eye)
+X_HEADER = 0.33                           # windshield header (Slide-4 fit; ~6 deg above the driver's eye)
 X_BULK = -0.64                            # rear bulkhead foot (behind the seat backs)
 SCREEN_LOC = V((0.795, 0.0, 0.738))       # centre of the touchscreen surface
 SCREEN_ROT = (0.0, math.radians(10.0), math.radians(-5.0))   # leans back 10 deg, turned 5 deg to the driver
 SCREEN_W, SCREEN_H = 0.3231, 0.2019       # 15.0 in diagonal, 16:10
 FWD_W, FWD_H = 0.160, 0.044               # forward displays (800 x 220 render targets -> 3.64:1)
-FWD_POS = {"Forward_Display_A": V((1.005, 0.530, 0.868)), "Forward_Display_B": V((1.005, 0.232, 0.868))}
+# INFERRED: low on the dash top near the windshield base, either side of the driver's sight line; visible to the
+# driver over the dash edge but hidden from the lower Slide-4 camera (they do not appear in that photo).
+FWD_POS = {"Forward_Display_A": V((1.150, 0.520, 0.819)), "Forward_Display_B": V((1.150, 0.240, 0.819))}
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEX_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "Textures"))
@@ -437,6 +439,17 @@ class MB:
         self.group(faces, 'closed')
         return faces
 
+    def box_uv(self, faces, s=1.0):
+        """Box projection by the dominant normal axis (small parts: lettering, glyphs)."""
+        for f in faces:
+            if f is None:
+                continue
+            f.normal_update()
+            ax = max(range(3), key=lambda k: abs(f.normal[k]))
+            for loop in f.loops:
+                c = [loop.vert.co[k] for k in range(3) if k != ax]
+                loop[self.uv].uv = (c[0] * s, c[1] * s)
+
     def tube(self, path, profile, m, up, caps=True, uvs=1.0, closed_path=False):
         """Sweep a closed 2D profile (list of (a, b)) along a 3D path; b along the up hint, a along T x N."""
         P = []
@@ -485,8 +498,8 @@ class MB:
         vmap = [self.vert(m4 @ v.co) for v in me.vertices]
         faces = []
         for p in me.polygons:
-            uv = [((me.vertices[i].co.x) * 4, (me.vertices[i].co.y) * 4) for i in p.vertices]
-            faces.append(self.face([vmap[i] for i in p.vertices], m, uv))
+            faces.append(self.face([vmap[i] for i in p.vertices], m))
+        self.box_uv(faces, 20.0)
         ev.to_mesh_clear()
         bpy.data.objects.remove(ob, do_unlink=True)
         bpy.data.curves.remove(cu)
@@ -589,8 +602,8 @@ def toward_cabin(c):
 
 
 # ============================================================================= SEATS
-CUSH_C = [(-0.175, 0.200), (-0.10, 0.212), (0.0, 0.232), (0.10, 0.262), (0.20, 0.300), (0.29, 0.342), (0.36, 0.377),
-          (0.405, 0.396), (0.437, 0.392), (0.455, 0.372), (0.463, 0.338), (0.464, 0.288), (0.460, 0.230), (0.454, 0.182)]
+CUSH_C = [(-0.175, 0.200), (-0.10, 0.212), (0.0, 0.234), (0.10, 0.266), (0.20, 0.304), (0.30, 0.346), (0.38, 0.384),
+          (0.440, 0.408), (0.476, 0.405), (0.496, 0.386), (0.505, 0.352), (0.506, 0.300), (0.502, 0.240), (0.496, 0.182)]
 # (w lateral [outer +], h scaled by the bolster height, h absolute, material) ; G = seam groove
 CUSH_PROF = [
     (-0.236, 0.00, -0.055, 'L'), (-0.238, 0.00, -0.022, 'L'), (-0.236, 0.32, 0.0, 'L'), (-0.229, 0.63, 0.0, 'L'),
@@ -933,7 +946,7 @@ def build_yoke(X):
     mb.groups[-1] = (mb.groups[-1][0], 'closed')
 
     # --- hub: rounded pentagon (flat top, point-down with a short flat), domed front, soft edge
-    corners = [(0.062, 0.050), (-0.062, 0.050), (-0.065, -0.006), (-0.024, -0.068), (0.024, -0.068), (0.065, -0.006)]
+    corners = [(0.061, 0.050), (-0.061, 0.050), (-0.064, 0.000), (-0.022, -0.058), (0.022, -0.058), (0.064, 0.000)]
     outline = resample(rounded_poly(corners, [0.017, 0.017, 0.020, 0.016, 0.016, 0.020], 8), 72, closed=True)
     if area2d(outline) < 0:
         outline.reverse()
@@ -956,9 +969,9 @@ def build_yoke(X):
             X["InteriorDark"], up=V((0, 0, 1)))
     # T emblem on the dome (raised, gloss black on the matte suede)
     xe = xr - 0.0478
-    T = [(-0.0125, 0.020), (0.0125, 0.020), (0.0125, 0.0155), (0.0028, 0.0130), (0.0028, -0.0150), (0.0, -0.0175),
-         (-0.0028, -0.0150), (-0.0028, 0.0130), (-0.0125, 0.0155)]
-    TT = [(-0.0125, 0.0245), (0.0125, 0.0245), (0.0100, 0.0222), (-0.0100, 0.0222)]
+    T = [(-0.0118, 0.0168), (-0.0060, 0.0186), (0.0, 0.0192), (0.0060, 0.0186), (0.0118, 0.0168), (0.0098, 0.0140), (0.0024, 0.0128),
+         (0.0018, -0.0120), (0.0, -0.0150), (-0.0018, -0.0120), (-0.0024, 0.0128), (-0.0098, 0.0140)]
+    TT = [(-0.0110, 0.0212), (-0.0055, 0.0228), (0.0, 0.0232), (0.0055, 0.0228), (0.0110, 0.0212), (0.0100, 0.0200), (0.0, 0.0219), (-0.0100, 0.0200)]
     for poly in (T, TT):
         front = [mb.vert((xe - 0.0007, -px, pz + 0.004)) for (px, pz) in poly]
         backv = [mb.vert((xe + 0.0010, -px, pz + 0.004)) for (px, pz) in poly]
@@ -979,7 +992,7 @@ def build_yoke(X):
         # scroll wheel (axis along the spoke), recessed half way into the housing face
         wc = V((xr - 0.020, side * 0.072, ZS))
         wheel = [wc + V((0, side * (-0.006 + 0.004 * k), 0)) for k in range(4)]
-        prof = [(0.0092 * math.cos(2 * math.pi * k / 20) * (0.92 if k % 2 else 1.0), 0.0092 * math.sin(2 * math.pi * k / 20) * (0.92 if k % 2 else 1.0)) for k in range(20)]
+        prof = [(0.0090 * math.cos(2 * math.pi * k / 36) * (0.95 if k % 2 else 1.0), 0.0090 * math.sin(2 * math.pi * k / 36) * (0.95 if k % 2 else 1.0)) for k in range(36)]
         mb.tube(wheel, prof, X["BlackGloss"], up=V((1, 0, 0)))
         # two buttons with glyphs (signal arrows / voice), towards the grip
         for (dz, glyph) in ((0.0055, 'voice'), (-0.0085, 'arrows')):
@@ -1262,11 +1275,14 @@ def fit_inside(p, margin=0.005):
 
 
 def clamp_inside(bm, margin):
-    n = 0
+    n, worst = 0, 0.0
     for v in bm.verts:
         if inside_body(v.co) < margin:
-            v.co = fit_inside(v.co, margin)
+            q = fit_inside(v.co, margin)
+            worst = max(worst, (q - v.co).length)
+            v.co = q
             n += 1
+    print("INTERIOR clamp: max displacement %.1f mm" % (worst * 1000))
     return n
 
 
@@ -1293,12 +1309,15 @@ def door_section(x, s):
     y6 -= 0.010
     zt = z6
     ypan = lambda z: min(0.800 + (z - 0.32) * 0.085, skin_y(x, z) - 0.085)
-    t = clamp((x + 0.62) / 1.40)
-    zsw_t = 0.585 + 0.085 * t
-    zsw_b = 0.537 + 0.072 * t
-    zpk_b = min(0.448 + 0.150 * t ** 1.6, zsw_b - 0.012)
-    p_sw = 0.046 * ramp(x, -0.74, -0.58) * (1 - smooth01((x - 0.66) / 0.14) ** 1.5 if x > 0.66 else 1.0)
-    p_pk = 0.032 * ramp(x, -0.74, -0.62) * (1 - ramp(x, 0.40, 0.66))
+    # Slide-4 door: a slim suede swoosh descending towards the front (z 0.69 at x 0.2 -> 0.62 at x 0.73) over a tall
+    # dark pocket (bottom ~0.50) whose front end closes to a tip at x ~0.72; red light under the swoosh lip and
+    # along the pocket's bottom edge.
+    z_top = table([-0.70, 0.19, 0.73, 0.86], [0.708, 0.700, 0.640, 0.612], x)
+    zsw_t = z_top - 0.012
+    zsw_b = (z_top - 0.050) + (0.522 - (z_top - 0.050)) * ramp(x, 0.58, 0.74)
+    zpk_b = min(0.500, zsw_b - 0.014)
+    p_sw = 0.046 * ramp(x, -0.74, -0.58) * (1 - ramp(x, 0.74, 0.88))
+    p_pk = 0.034 * ramp(x, -0.74, -0.62) * (1 - ramp(x, 0.56, 0.74))
     yz = []
     S, C, D, R = 'S', 'C', 'D', 'R'
     # belt rail (suede), tucked against the glass
@@ -1350,23 +1369,23 @@ def door_panel(mb, K, s):
         mats = [K[m] for (_, _, m) in sec[:-1]]
     mb.grid(rows, mats, uvs=carbon_uv, orient=('toward', toward_cabin))
     # door speaker (lower panel, ahead of the pocket) and inner release handle in the pocket front
-    for (x, z, r) in ((0.52, 0.405, 0.058),):
+    for (x, z, r) in ((0.735, 0.410, 0.050),):
         y = s * (0.800 + (z - 0.32) * 0.085 - 0.006)
         n = V((0, -s, 0))
         c = V((x, y, z))
         outer = [c + V((0, 0, 0)) + (V((1, 0, 0)) * math.cos(a) + V((0, 0, 1)) * math.sin(a)) * r for a in [2 * math.pi * k / 40 for k in range(40)]]
         ring = [mb.vert(p + n * 0.002) for p in outer]
         ring2 = [mb.vert(c + n * 0.006 + (p - c) * 0.92) for p in outer]
-        Gr = mb.grid([[v.co for v in ring], [v.co for v in ring2]], K['A'], closed_u=True, verts=[ring, ring2], orient=None)
+        Gr = mb.grid([[v.co for v in ring], [v.co for v in ring2]], K['B'], closed_u=True, verts=[ring, ring2], orient=None)
         f = mb.groups.pop()[0]
         f += mb.cap(ring2, K['D']); mb.groups.pop()
         mb.group(f, ('dir', n))
         for k in range(9):
             zz = z - r * 0.8 + k * r * 0.2
             half = r * 0.88 * math.sqrt(max(0.0, 1 - ((zz - z) / (r * 0.92)) ** 2))
-            mb.box(c + n * 0.0075 + V((0, 0, zz - z)), (2 * half, 0.003, 0.004), K['A'], r=0.0012, seg=1)
-    hx, hz = 0.50, 0.548
-    y = s * (0.800 + (hz - 0.32) * 0.085 - 0.012)
+            mb.box(c + n * 0.0075 + V((0, 0, zz - z)), (2 * half, 0.003, 0.004), K['B'], r=0.0012, seg=1)
+    hx, hz = 0.50, 0.556
+    y = s * (0.800 + (hz - 0.32) * 0.085 + 0.010)
     mb.box(V((hx, y, hz)), (0.090, 0.016, 0.014), K['A'], r=0.005, seg=2)
 
 
@@ -1397,9 +1416,12 @@ def headliner(mb, K):
         sec = roof_section(x, 0.030, 12)
         sec = resample(sec, 41)
         row = []
+        ye = abs(sec[0].x)
         for p in sec:
             y = p.x
-            drop = 0.016 * (1 - ramp(abs(y), 0.098, 0.125))      # centre spine band
+            drop = 0.012 * (1 - ramp(abs(y), 0.100, 0.118))      # centre spine band (roof spine of the T-top)
+            u = clamp((abs(y) - 0.128) / max(0.05, ye - 0.150))
+            drop += 0.022 * math.sin(math.pi * u) ** 0.8          # padded side panels (door-mounted roof trim)
             row.append(V((x, y, p.y - drop)))
         # rolled lips at the rails
         l0, r0 = row[0], row[-1]
@@ -1414,25 +1436,24 @@ def frame_path():
     # sweeps up and inboard across the front of the side glass into the header corner, a "U" around the view.
     # Pillar centre line: z rises from the dash corner to the header corner; y follows the side glass 4.5 cm inboard.
     left = []
-    for (x, z) in ((0.935, 0.786), (0.880, 0.845), (0.800, 0.905), (0.700, 0.958), (0.590, 0.998), (0.480, 1.026),
-                   (0.385, 1.042), (X_HEADER + 0.045, 1.050)):
-        left.append(V((x, skin_y(x, z) - 0.050 - 0.020 * ramp(x, 0.70, 0.40), z)))
-    head = []
-    sec = roof_section(X_HEADER, 0.044, 10)
-    for p in sec:
-        if abs(p.x) < 0.44:
-            head.append(V((X_HEADER, p.x, p.y)))
-    head.sort(key=lambda p: -p.y)
-    right = [V((p.x, -p.y, p.z)) for p in reversed(left)]
-    pts = left + head[::max(1, len(head) // 8)] + right
-    return resample(spline(pts, 6), 170)
+    for (x, z) in ((0.935, 0.786), (0.880, 0.845), (0.800, 0.905), (0.700, 0.958), (0.590, 0.998), (0.490, 1.024)):
+        left.append(V((x, skin_y(x, z) - 0.052, z)))
+    # large-radius top corner into the header (Slide-4: the frame reads as one padded "U")
+    zh = lambda y: roof_z(X_HEADER, y) - 0.050
+    for (x, y) in ((0.410, 0.520), (0.345, 0.490), (0.300, 0.450), (0.275, 0.400)):
+        z = min(zh(y) + 0.004, roof_z(x, y) - 0.050)
+        left.append(V((x, min(y, skin_y(x, z) - 0.052), z)))
+    head = [V((X_HEADER, y, zh(y))) for y in (0.33, 0.22, 0.11, 0.0)]
+    right = [V((p.x, -p.y, p.z)) for p in reversed(left + head[:-1])]
+    pts = left + head + right
+    return resample(spline(pts, 8), 190)
 
 
 def frame_and_braces(mb, K):
     path = frame_path()
     inward = lambda p, t: V((0, -p.y, 0.50 - p.z))
-    prof = [(a, b) for a, b in rrect(0.078, 0.042, 0.014, 4)]
-    prof = [(a, b + 0.010) for (a, b) in prof]
+    prof = [(a, b) for a, b in rrect(0.080, 0.048, 0.018, 5)]
+    prof = [(a, b + 0.008) for (a, b) in prof]
     mb.tube(path, prof, K['S'], up=inward)
     # A-pillar braces: from the dash top inboard, rising back/outboard into the pillars (Slide-4)
     for s in (1, -1):
@@ -1440,8 +1461,8 @@ def frame_and_braces(mb, K):
         p0 = V((x0, s * 0.600, dash_top_z(x0) - 0.010))
         p1 = V((X_HEADER + 0.060, s * 0.455, roof_z(X_HEADER + 0.06, 0.455) - 0.075))
         mid = p0.lerp(p1, 0.5) + V((0, s * 0.006, 0.004))
-        bp = resample(spline([p0 + V((0.03, 0, -0.025)), p0, mid, p1, p1 + (p1 - mid).normalized() * 0.03], 8), 40)
-        mb.tube(bp, [(a, b) for a, b in rrect(0.052, 0.034, 0.014, 4)], K['S'], up=lambda p, t, s=s: V((0, -s, 0.5)))
+        bp = resample(spline([p0 + V((0.03, 0, -0.025)), p0, mid, p1, p1 + (p1 - mid).normalized() * 0.012], 8), 40)
+        mb.tube(bp, [(a, b) for a, b in rrect(0.066, 0.030, 0.012, 4)], K['S'], up=lambda p, t, s=s: V((0, -s, 0.35)))
 
 
 def rear_view(mb, K):
@@ -1473,12 +1494,12 @@ def rear_view(mb, K):
     mb.group([f], ('dir', V((-1, 0, 0))))
 
 
-SPINE_TOP = 0.500
-SPINE_HW = 0.112
+SPINE_TOP = 0.505
+SPINE_HW = 0.122
 
 
 def spine_x_front(y):
-    return 0.300 - 0.55 * abs(y)
+    return 0.340 - 0.50 * abs(y)
 
 
 def spine_console(mb, K):

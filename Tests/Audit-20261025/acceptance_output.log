@@ -1,0 +1,21 @@
+PASS | ceiling fan off loses contact | -115.537277762
+PASS | ceiling fan on supports weight | 5.9999997212
+PASS | no nearby surface means no fan suction | 0
+PASS | full floor supplies usable fan suction | 31273.8461538
+PASS | center-only narrow surface leaks away most suction | 0.0432929266018
+PASS | missing front floor reduces shared-plenum suction | 0.0829928498468
+PASS | back-facing surface cannot seal underfloor | 0
+PASS | out-of-reach hit cannot seal underfloor | 0
+PASS | curved cylinder retains seal at diagonal headings upright wall and ceiling | 0.930769230769
+PASS | Performance trim cannot produce gas thrust | 0
+PASS | disarmed thrusters decay below 0.01 N | 0.00121962329096
+PASS | boost consumes gas | -68.1014403335
+PASS | burst conserves mass | -1.42108547152e-13
+PASS | burst conserves energy | 1.03730115093e-14
+PASS | refill restores pressure | 379
+PASS | half timestep acceleration speed agrees within 1 percent | 0.000318228878413
+PASS | empty battery stops electric fan | 0.00174455580843
+PASS | unlimited battery powers fan after empty finite state | 31273.8461538
+PASS | empty battery never requests drive torque including at standstill | 0
+PASS | unlimited battery still enables drive torque | 11001.9732351
+RESULT: 0 failure(s)

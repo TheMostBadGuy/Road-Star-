@@ -1,5 +1,6 @@
 ﻿#include "RoadsterPawn.h"
 #include "RoadsterRig.h"
+#include "SuspensionRig.h"
 #include "RoadsterInterface.h"
 #include "TrackActor.h"
 #include "Components/StaticMeshComponent.h"
@@ -91,6 +92,14 @@ ARoadsterPawn::ARoadsterPawn()
 		Discs.Add(AddPart(bFront ? TEXT("Brake_Front_Disc") : TEXT("Brake_Rear_Disc"), nullptr, *FString::Printf(TEXT("Disc%d"), i)));
 		Calipers.Add(AddPart(bFront ? TEXT("Brake_Front_Caliper") : TEXT("Brake_Rear_Caliper"), nullptr, *FString::Printf(TEXT("Caliper%d"), i)));
 	}
+	for (int32 p = 0; p < SuspensionRig::NumParts; ++p)
+	{
+		const SuspensionRig::FPart& Part = SuspensionRig::Parts[p];
+		UStaticMeshComponent* C = AddPart(ANSI_TO_TCHAR(Part.Name));
+		C->SetRelativeLocation(Part.Joint == SuspensionRig::Static ? FVector::ZeroVector : FVector(Part.Pivot[0], Part.Pivot[1], Part.Pivot[2]));
+		C->SetCastShadow(Part.Joint != SuspensionRig::Static);
+		SuspParts.Add(C);
+	}
 
 	// cold-gas plumes: translucent cones scaled by thrust (white condensation jets of cold nitrogen)
 	UStaticMesh* Cone = LoadAsset<UStaticMesh>(TEXT("/Engine/BasicShapes/Cone.Cone"));
@@ -132,7 +141,7 @@ ARoadsterPawn::ARoadsterPawn()
 	Camera->PostProcessSettings.bOverride_MotionBlurAmount = true;
 	Camera->PostProcessSettings.MotionBlurAmount = 0.35f;
 	Camera->PostProcessSettings.bOverride_SceneFringeIntensity = true;
-	Camera->PostProcessSettings.SceneFringeIntensity = 0.25f;
+	Camera->PostProcessSettings.SceneFringeIntensity = 0.f;
 	Camera->PostProcessSettings.bOverride_VignetteIntensity = true;
 	Camera->PostProcessSettings.VignetteIntensity = 0.32f;
 
@@ -469,22 +478,125 @@ void ARoadsterPawn::Tick(float DeltaSeconds)
 	}
 }
 
+void ARoadsterPawn::UpdateSuspension(FTransform OutUpright[4])
+{
+	using namespace SuspensionRig;
+	auto Seg = [](const float* Xs, int32 N, float X, int32& I, float& A)
+	{
+		X = FMath::Clamp(X, Xs[0], Xs[N - 1]);
+		I = 0;
+		while (I < N - 2 && X > Xs[I + 1]) ++I;
+		A = (X - Xs[I]) / FMath::Max(Xs[I + 1] - Xs[I], 1e-6f);
+	};
+	auto V = [](const float* P) { return FVector(P[0], P[1], P[2]); };
+
+	FVector Pts[4][NumPoints];
+	FVector TOc[4];
+	float SpringS[4], RackY[4], Travel[4];
+	int32 TI[4]; float TA[4];
+	for (int32 c = 0; c < 4; ++c)
+	{
+		const FCornerTables& T = Corners[c];
+		const WheelState& W = Sim.Wheels[c];
+		Travel[c] = float(W.Compression - Sim.S.StaticCompression) * M2CM;   // + = bump
+		Seg(T.TravelCm, NumTravel, Travel[c], TI[c], TA[c]);
+		const int32 i = TI[c]; const float a = TA[c];
+		for (int32 k = 0; k < NumPoints; ++k)
+			Pts[c][k] = FMath::Lerp(V(T.Points[k][i]), V(T.Points[k][i + 1]), a);
+		SpringS[c] = FMath::Lerp(T.SpringScale[i], T.SpringScale[i + 1], a);
+		FVector WC = FMath::Lerp(V(T.WheelCentre[i]), V(T.WheelCentre[i + 1]), a);
+		FQuat Up = FQuat::Slerp(FQuat(T.UprightQuat[i][0], T.UprightQuat[i][1], T.UprightQuat[i][2], T.UprightQuat[i][3]),
+			FQuat(T.UprightQuat[i + 1][0], T.UprightQuat[i + 1][1], T.UprightQuat[i + 1][2], T.UprightQuat[i + 1][3]), a);
+		TOc[c] = Pts[c][Pt_TO];
+		RackY[c] = 0.f;
+		if (T.bFront && T.SteerCount > 1)
+		{
+			// road-wheel angle from the sim (Unreal sign: + = right) -> table sign (+ = nose left)
+			const float SteerDeg = -FMath::RadiansToDegrees(float(W.Steer));
+			int32 si; float sa, si0a; int32 si0;
+			Seg(T.SteerDeg, T.SteerCount, SteerDeg, si, sa);
+			Seg(T.SteerDeg, T.SteerCount, 0.f, si0, si0a);
+			const float Kp = FMath::Lerp(T.KingpinDeg[si], T.KingpinDeg[si + 1], sa);
+			RackY[c] = FMath::Lerp(T.RackYCm[si], T.RackYCm[si + 1], sa);
+			// steering swings the upright about the current kingpin axis (lower -> upper ball joint)
+			const FVector LBJ = Pts[c][Pt_LBJ];
+			const FVector Axis = (Pts[c][Pt_UBJ] - LBJ).GetSafeNormal();
+			const FQuat Q(Axis, -FMath::DegreesToRadians(Kp));
+			WC = LBJ + Q.RotateVector(WC - LBJ);
+			Up = Q * Up;
+			const FVector TOs = FMath::Lerp(V(T.SteerTO[si]), V(T.SteerTO[si + 1]), sa);
+			const FVector TO0 = FMath::Lerp(V(T.SteerTO[si0]), V(T.SteerTO[si0 + 1]), si0a);
+			TOc[c] = Pts[c][Pt_TO] + (TOs - TO0);
+		}
+		OutUpright[c] = FTransform(Up, WC);
+	}
+
+	FQuat DamperRot[4] = { FQuat::Identity, FQuat::Identity, FQuat::Identity, FQuat::Identity };
+	FVector DamperPivot[4];
+	for (int32 p = 0; p < NumParts; ++p)
+	{
+		const FPart& Part = Parts[p];
+		const int32 c = Part.Corner;
+		if (c < 0 || Part.Joint == Static) continue;
+		UStaticMeshComponent* C = SuspParts[p];
+		const FVector Pivot0 = V(Part.Pivot);
+		const FVector SDir = V(Part.StaticDir).GetSafeNormal();
+		switch (Part.Joint)
+		{
+		case Hinge:
+		{
+			const FCornerTables& T = Corners[c];
+			const float Deg = FMath::Lerp(T.AngleDeg[Part.AngleTable][TI[c]], T.AngleDeg[Part.AngleTable][TI[c] + 1], TA[c]);
+			C->SetRelativeLocationAndRotation(Pivot0, FQuat(V(Part.Axis).GetSafeNormal(), -FMath::DegreesToRadians(Deg)));
+			break;
+		}
+		case Rigid:
+			C->SetRelativeLocationAndRotation(OutUpright[c].GetLocation(), OutUpright[c].GetRotation());
+			break;
+		case Aim:
+		case AimSpin:
+		case AimScale:
+		{
+			FVector Pivot = Part.PivotPoint >= 0 ? Pts[c][Part.PivotPoint] : Pivot0;
+			if (Part.bRack) Pivot.Y += RackY[c];
+			if (Part.bFollowDamper) Pivot = DamperPivot[c] + DamperRot[c].RotateVector(Pivot0 - DamperPivot[c]);
+			const FVector Target = Part.TargetPoint == Pt_TO ? TOc[c] : (Part.TargetPoint >= 0 ? Pts[c][Part.TargetPoint] : V(Part.TargetFixed));
+			FQuat Rot = FQuat::FindBetweenNormals(SDir, (Target - Pivot).GetSafeNormal());
+			if (Part.Joint == AimSpin) Rot = Rot * FQuat(SDir, float(Sim.Wheels[c].Spin) * FMath::Sign(SDir.Y));
+			C->SetRelativeLocationAndRotation(Pivot, Rot);
+			if (Part.Joint == AimScale) C->SetRelativeScale3D(FVector(1.f, SpringS[c], 1.f));
+			if (FCStringAnsi::Strstr(Part.Name, "_Damper") && !FCStringAnsi::Strstr(Part.Name, "DamperRod"))
+			{
+				DamperRot[c] = Rot; DamperPivot[c] = Pivot0;
+			}
+			break;
+		}
+		default: break;
+		}
+	}
+}
+
 void ARoadsterPawn::UpdateVisuals(float DeltaSeconds)
 {
 	const Spec& S = Sim.S;
-	// wheels / brakes: hardpoint - up * suspension length, steer about Z, spin about Y
+	// suspension first: the uprights carry the wheels and brakes (camber, toe, kingpin steering)
+	FTransform Upright[4];
+	UpdateSuspension(Upright);
 	for (int32 i = 0; i < 4; ++i)
 	{
 		const WheelState& W = Sim.Wheels[i];
-		const FVector Centre = FVector(W.Hardpoint.x, W.Hardpoint.y, W.Hardpoint.z - W.Length) * M2CM;
 		const bool bRight = W.Hardpoint.y > 0;   // physics frame: +Y right
-		const FQuat Flip = bRight ? FQuat(FVector::UpVector, PI) : FQuat::Identity;
-		const FQuat Steer(FVector::UpVector, W.Steer);
+		const FVector Centre = Upright[i].GetLocation();
+		const FQuat Hub = Upright[i].GetRotation();
 		const FQuat Spin(FVector::RightVector, W.Spin);
-		Wheels[i]->SetRelativeLocationAndRotation(Centre, Steer * Spin * Flip);
-		const FVector In = Steer.RotateVector(FVector(0, bRight ? -7.f : 7.f, 0));
-		Discs[i]->SetRelativeLocationAndRotation(Centre + In, Steer * Spin * Flip);
-		Calipers[i]->SetRelativeLocationAndRotation(Centre + In, Steer * Flip);
+		// tyre/rim: left template turned 180 deg on the right so the sidewall lettering reads correctly
+		Wheels[i]->SetRelativeLocationAndRotation(Centre, Hub * Spin * (bRight ? FQuat(FVector::UpVector, PI) : FQuat::Identity));
+		// discs and calipers already contain their axial offset; mirror them on the right so the calipers trail
+		const FVector Mirror(1.f, bRight ? -1.f : 1.f, 1.f);
+		Discs[i]->SetRelativeLocationAndRotation(Centre, Hub * Spin);   // scale is applied before rotation: same spin both sides
+		Discs[i]->SetRelativeScale3D(Mirror);
+		Calipers[i]->SetRelativeLocationAndRotation(Centre, Hub);
+		Calipers[i]->SetRelativeScale3D(Mirror);
 	}
 	// fans spin about X at the simulated rpm (visual rate capped to avoid strobing)
 	const float FanDeg = FMath::Min(Sim.FanRPM, 900.0) * 6.0 * DeltaSeconds;

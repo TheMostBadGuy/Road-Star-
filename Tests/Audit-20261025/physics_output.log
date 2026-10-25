@@ -1,0 +1,23 @@
+Performance  mass   1700 kg | wheel loads F  3572 R  4770 N (sum  16667 vs weight  16671) | front 42.8% | body z -0.0000 | tank   0.0 kg @ 0 bar (0 psi)
+Thrust       mass   1907 kg | wheel loads F  3902 R  5415 N (sum  18683 vs weight  18699) | front 41.9% | body z +0.0000 | tank  71.8 kg @ 379 bar (5497 psi)
+Rocket       mass   2245 kg | wheel loads F  4615 R  6392 N (sum  22014 vs weight  22014) | front 41.9% | body z +0.0000 | tank 214.8 kg @ 379 bar (5497 psi)
+Performance (fans auto)        0-60  1.51s (1ft rollout  1.33s) | 0-100mph  2.79s | 1/4mi  7.94s @ 180.8 mph | peak 1.83 g | tank   0%
+Performance (fans off)         0-60  2.62s (1ft rollout  2.37s) | 0-100mph  4.29s | 1/4mi  9.07s @ 179.1 mph | peak 1.13 g | tank   0%
+Thrust + BOOST                 0-60  0.80s (1ft rollout  0.69s) | 0-100mph  2.08s | 1/4mi  7.39s @ 178.1 mph | peak 5.23 g | tank   0%
+Rocket + BOOST                 0-60  0.57s (1ft rollout  0.45s) | 0-100mph  1.16s | 1/4mi  6.53s @ 186.1 mph | peak 4.97 g | tank   0%
+Top speed (limiter)   : 232.1 mph (373 km/h), motor 22592 rpm, elec 554 kW, drag 4527 N, wing 0.45
+Top speed (unrestricted): 255.3 mph (411 km/h), motor 24895 rpm, elec 730 kW, drag 5477 N, wing 0.45
+Braking 60-0 (fan Off    ):  96.4 ft in 2.18 s
+Braking 60-0 (fan Braking):  57.4 ft in 1.16 s
+Skidpad @ 15 m/s (fan Off     ): peak lateral 1.20 g
+Skidpad @ 25 m/s (fan Off     ): peak lateral 1.24 g
+Skidpad @ 45 m/s (fan Off     ): peak lateral 1.39 g
+Skidpad @ 15 m/s (fan Max Grip): peak lateral 2.87 g
+Skidpad @ 25 m/s (fan Max Grip): peak lateral 2.97 g
+Skidpad @ 45 m/s (fan Max Grip): peak lateral 3.01 g
+Ceiling Performance fan Off     : z after 10 s -463.095 (min -463.095), speed 89.9 m/s, suction 0.00 kPa (0 N) vs weight 16671 N, seal 0.00, contacts 0
+Ceiling Performance fan Max Grip: z after 10 s 6.000 (min 5.999), speed 33.8 m/s, suction 7.45 kPa (31274 N) vs weight 16671 N, seal 0.93, contacts 4
+Ceiling Rocket      fan Off     : z after 10 s -467.582 (min -467.582), speed 89.9 m/s, suction 0.00 kPa (0 N) vs weight 21816 N, seal 0.00, contacts 0
+Ceiling Rocket      fan Max Grip: z after 10 s 6.000 (min 5.999), speed 17.2 m/s, suction 7.45 kPa (31274 N) vs weight 22014 N, seal 0.93, contacts 4
+Rocket full lift: max height 28.9 m, airborne 5.4 s, gas used in 5.5 s, roll/pitch error at end 0.4 deg
+Flight assist: dropped inverted from 8 m -> up.z 1.00, contacts 4, tank 89%

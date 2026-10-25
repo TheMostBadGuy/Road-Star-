@@ -182,6 +182,11 @@ def uv(m, idx=0, tile=1.0, x=-900, y=0):
 
 
 def finish(m):
+    # Keep these persisted so runtime/cooking does not substitute the default material.
+    if m.get_name() == "M_Terrain":
+        m.set_editor_property("used_with_nanite", True)
+    if m.get_name() == "M_Track_Support":
+        m.set_editor_property("used_with_instanced_static_meshes", True)
     MEL.recompile_material(m)
     EAL.save_loaded_asset(m)
 

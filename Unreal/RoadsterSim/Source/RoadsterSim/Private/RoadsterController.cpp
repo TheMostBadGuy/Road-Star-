@@ -8,6 +8,11 @@
 #include "GameFramework/GameUserSettings.h"
 #include "UnrealClient.h"
 #include "Misc/Paths.h"
+#include "Misc/FileHelper.h"
+#include "HAL/FileManager.h"
+#include "HAL/IConsoleManager.h"
+
+bool RunRoadsterTrackVerification(ARoadsterController* Controller);
 
 extern int32 RoadsterLogLevel();
 extern void SetRoadsterLogLevel(int32 Level);
@@ -55,6 +60,44 @@ void ARoadsterController::BeginPlay()
 		for (const FString& S : Parts) ShotTimes.Add(FCString::Atof(*S));
 	}
 	if (FParse::Value(FCommandLine::Get(), TEXT("cam="), CamIdx) && Car()) Car()->CameraMode = (ERoadsterCamera)FMath::Clamp(CamIdx, 0, 6);
+	// Repeatable, real-renderer review modes. These do not change the ordinary launch flow.
+	FParse::Value(FCommandLine::Get(), TEXT("exitafter="), ExitAfter);
+	int32 ReviewQuality = -1;
+	if (FParse::Value(FCommandLine::Get(), TEXT("reviewquality="), ReviewQuality))
+	{
+		if (UGameUserSettings* GS = UGameUserSettings::GetGameUserSettings())
+		{
+			GS->SetOverallScalabilityLevel(FMath::Clamp(ReviewQuality, 0, 3));
+			GS->ApplyNonResolutionSettings();
+		}
+		if (IConsoleVariable* Percentage = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage"))) Percentage->Set(100.f, ECVF_SetByConsole);
+	}
+	FParse::Value(FCommandLine::Get(), TEXT("shotdir="), ShotDirectory, false);
+	if (ShotDirectory.IsEmpty()) ShotDirectory = FPaths::ProjectSavedDir() / TEXT("Shots");
+	IFileManager::Get().MakeDirectory(*ShotDirectory, true);
+	if (FParse::Param(FCommandLine::Get(), TEXT("verifytracks")))
+		RunRoadsterTrackVerification(this);
+	FString Review;
+	if (FParse::Value(FCommandLine::Get(), TEXT("review="), Review))
+	{
+		SetMode(Review == TEXT("builder") ? EUIMode::Builder : Review == TEXT("screen") ? EUIMode::Touchscreen : EUIMode::Driving);
+		bShowHints = false;
+		if (ARoadsterPawn* P = Car())
+		{
+			P->bSimPaused = Review == TEXT("builder");
+			if (Review == TEXT("cockpit")) P->CameraMode = ERoadsterCamera::Cockpit;
+			if (Review == TEXT("exterior"))
+			{
+				P->CameraMode = ERoadsterCamera::Orbit;
+				P->Sim.Set.Aero = Roadster::AeroPreset::LowDrag;
+			}
+			if (Review == TEXT("screen") && P->Interface)
+			{
+				P->Interface->Tab = ECarTab::Vehicle;
+				P->Interface->Page = EVehiclePage::Dynamics;
+			}
+		}
+	}
 }
 
 ARoadsterPawn* ARoadsterController::Car() const { return Cast<ARoadsterPawn>(GetPawn()); }
@@ -97,9 +140,23 @@ void ARoadsterController::PlayerTick(float DeltaTime)
 	Super::PlayerTick(DeltaTime);
 	ARoadsterPawn* P = Car();
 	PlayTime += DeltaTime;
+	if (ExitAfter > 0.f && PlayTime >= 5.f) { MeasuredFrameTime += DeltaTime; ++MeasuredFrames; ReviewFrameTimes.Add(DeltaTime * 1000.f); }
+	if (ExitAfter > 0.f && PlayTime >= ExitAfter)
+	{
+		int32 W = 0, H = 0; GetViewportSize(W, H);
+		ReviewFrameTimes.Sort();
+		const float P95 = ReviewFrameTimes.IsEmpty() ? 0.f : ReviewFrameTimes[FMath::Min(ReviewFrameTimes.Num() - 1, FMath::FloorToInt(ReviewFrameTimes.Num() * 0.95f))];
+		const IConsoleVariable* Percentage = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage"));
+		const FString Report = FString::Printf(TEXT("Frames=%d\nElapsedSeconds=%.3f\nAverageFPS=%.2f\nP95FrameMilliseconds=%.2f\nResolution=%dx%d\nScreenPercentage=%.1f\nNote=Short review run, excludes first 5 seconds; screenshots can cause hitches.\n"),
+			MeasuredFrames, MeasuredFrameTime, MeasuredFrames / FMath::Max(MeasuredFrameTime, 0.001f), P95, W, H, Percentage ? Percentage->GetFloat() : -1.f);
+		FFileHelper::SaveStringToFile(Report, *(ShotDirectory / TEXT("performance.txt")));
+		UE_LOG(LogTemp, Display, TEXT("ROADSTER_REVIEW %s"), *Report.Replace(TEXT("\n"), TEXT(" ")));
+		ExitAfter = 0.f;
+		ConsoleCommand(TEXT("quit"));
+	}
 	if (ShotIndex < ShotTimes.Num() && PlayTime >= ShotTimes[ShotIndex])
 	{
-		FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / FString::Printf(TEXT("Shots/shot_%02d.png"), ShotIndex), false, false);
+		FScreenshotRequest::RequestScreenshot(ShotDirectory / FString::Printf(TEXT("shot_%02d.png"), ShotIndex), false, false);
 		++ShotIndex;
 	}
 

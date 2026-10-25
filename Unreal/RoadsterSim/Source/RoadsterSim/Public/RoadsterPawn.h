@@ -106,6 +106,8 @@ protected:
 	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Wheels;
 	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Discs;
 	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Calipers;
+	/** Pushrod suspension parts (SuspensionRig.h order), articulated from wheel travel and steering. */
+	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> SuspParts;
 	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> PlumesRear;
 	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> PlumesLift;
 	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> PlumesYaw;
@@ -147,6 +149,8 @@ private:
 	Roadster::TraceFn MakeTrace();
 	void StepSimulation(float DeltaSeconds);
 	void UpdateVisuals(float DeltaSeconds);
+	/** Pose every suspension part; returns the upright (hub carrier) transform per corner for wheels and brakes. */
+	void UpdateSuspension(FTransform OutUpright[4]);
 	void UpdateAudio(float DeltaSeconds);
 	void UpdateCamera(float DeltaSeconds);
 	void UpdateSmoke(float DeltaSeconds);

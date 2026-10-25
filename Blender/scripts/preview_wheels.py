@@ -1,6 +1,6 @@
 """Build the wheels / brakes / suspension module and render verification views (EEVEE).
 
-blender -b -P preview_wheels.py -- [out_dir] [--only name,name] [--samples N]
+blender -b -P preview_wheels.py -- [out_dir] [--only name,name] [--samples N] [--save-blend]
 
 Renders (into Blender/renders_wheels by default):
   side_front_match.png       orthographic side view of the front-left wheel at the scale of Tesla's Pilot photo
@@ -41,7 +41,8 @@ while _i < len(argv):
         SAMPLES = int(argv[_i + 1])
         _i += 2
     else:
-        OUT = a
+        if not a.startswith("--"):
+            OUT = a
         _i += 1
 os.makedirs(OUT, exist_ok=True)
 PHOTO = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "Research", "images",
@@ -354,7 +355,9 @@ def main():
     for n in ("WFL",):
         inst[n].hide_render = False
     render(sc, cam, "susp_front_corner_wheel", 1600, 1100)
-    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, "preview_wheels.blend"))
+    if "--save-blend" in sys.argv:
+        bpy.context.preferences.filepaths.save_version = 0
+        bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, "preview_wheels.blend"))
 
 
 main()

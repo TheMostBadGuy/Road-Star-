@@ -1,6 +1,7 @@
 ﻿"""Build the Roadster in Blender (background mode).
 
-blender -b -P build_roadster.py -- <out_dir> [--views] [--export]
+blender -b -P build_roadster.py -- <out_dir> [--views] [--export] [--candidate]
+--candidate saves the blend/FBX/manifest under out_dir and never writes the authoritative blend, exports or C++ rig header.
 Blender frame: +X forward, +Y = car's LEFT, +Z up (FBX import into UE flips Y, so UE +Y = right).
 """
 import bpy, bmesh, math, sys, os, importlib
@@ -12,6 +13,10 @@ import roadster_body
 importlib.reload(roadster_body)
 import roadster_parts
 importlib.reload(roadster_parts)
+import roadster_interior
+importlib.reload(roadster_interior)
+import roadster_wheels
+importlib.reload(roadster_wheels)
 import json
 import roadster_materials
 importlib.reload(roadster_materials)
@@ -21,6 +26,7 @@ argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = argv[0] if argv else os.path.join(SCRIPT_DIR, "..", "renders")
 DO_VIEWS = "--views" in argv
 DO_EXPORT = "--export" in argv
+CANDIDATE = "--candidate" in argv
 os.makedirs(OUT, exist_ok=True)
 
 WB = roadster_body.WB
@@ -313,7 +319,10 @@ def main():
     static.append(P.rear_face(M))
     rear_thr, rocket_thr = P.thrusters(M)
     copv = P.copv(M)
-    interior = P.interior(M)
+    # The detailed modules preserve the names loaded by RoadsterPawn. The legacy
+    # P.interior includes wheel-well boxes above the front fenders and is no
+    # longer used. All cabin, yoke and display geometry now comes from one source.
+    interior = roadster_interior.build(M)
     wing = P.rear_wing(M)
     barges = P.barge_boards(M)
     skirt = P.skirts(M)
@@ -321,22 +330,29 @@ def main():
     for k in range(4):
         y = (k - 1.5) * 1.26 / 4
         fans.append(P.fan_rotor(M, "Fan_%d" % k, (roadster_body.TAIL_X - 0.05 + 0.10, y, 0.284)))
-    wf = P.wheel(M, "Wheel_Front", R_FRONT, 20, 0.295)
-    wr = P.wheel(M, "Wheel_Rear", R_REAR, 21, 0.335)
-    dfront, cfront = P.brakes(M, "Brake_Front", 0.205, FA, 1, 0.295)
-    drear, crear = P.brakes(M, "Brake_Rear", 0.200, RA, 1, 0.335)
+    # wheels, brakes and the pushrod suspension (all four corners) + export/suspension_rig.json
+    wobj = roadster_wheels.build(M, write_rig=not CANDIDATE,
+                                 rig_path=os.path.join(OUT, "suspension_rig.json") if CANDIDATE else roadster_wheels.RIG_JSON)
+    wf, wr = wobj["Wheel_Front"], wobj["Wheel_Rear"]
+    dfront, cfront = wobj["Brake_Front_Disc"], wobj["Brake_Front_Caliper"]
+    drear, crear = wobj["Brake_Rear_Disc"], wobj["Brake_Rear_Caliper"]
+    susp = [o for n, o in wobj.items() if n.startswith("Susp_")]
+    susp_static = [o for o in susp if o.name.endswith("_Mounts") or o.name == "Susp_F_SteeringRack"]
+    susp_moving = [o for o in susp if o not in susp_static]
 
     # preview instances of the wheels / brakes at the four corners (left side = +Y faces outward)
     corners = {"FL": (FA, TRACK_F / 2, R_FRONT, wf, dfront, cfront), "FR": (FA, -TRACK_F / 2, R_FRONT, wf, dfront, cfront),
                "RL": (RA, TRACK_R / 2, R_REAR, wr, drear, crear), "RR": (RA, -TRACK_R / 2, R_REAR, wr, drear, crear)}
     templates = {wf, wr, dfront, cfront, drear, crear}
     for key, (x, y, r, w, d, c) in corners.items():
-        for src, dy in ((w, 0.0), (d, -0.07), (c, -0.07)):
+        # Detailed discs/calipers already contain their axial offset from the
+        # wheel centre. The runtime pawn must use Centre, with no legacy -7 cm In.
+        for src in (w, d, c):
             inst = src.copy()
             inst.name = "Preview_%s_%s" % (src.name, key)
             bpy.context.collection.objects.link(inst)
             side = 1 if y > 0 else -1
-            inst.location = (x, y + side * dy, r)
+            inst.location = (x, y, r)
             inst.rotation_euler = (0, 0, 0 if side > 0 else math.pi)
     for t in templates:
         t.hide_render = True
@@ -345,11 +361,21 @@ def main():
     # export manifest: every exported mesh with its pivot (Blender coordinates, metres)
     global EXPORT_SET
     EXPORT_SET = {
-        "static": [o.name for o in static] + [rear_thr.name, rocket_thr.name, copv.name] + [o.name for o in interior.values() if o.name not in ("Yoke",)],
-        "moving": {o.name: list(o.location) for o in [wing, vent, skirt, interior["Yoke"]] + barges + fans},
+        "static": [o.name for o in static] + [rear_thr.name, rocket_thr.name, copv.name] + [o.name for o in interior.values() if o.name not in ("Yoke",)]
+                  + [o.name for o in susp_static],
+        "moving": {o.name: list(o.location) for o in [wing, vent, skirt, interior["Yoke"]] + barges + fans + susp_moving},
         "wheels": {o.name: [0, 0, 0] for o in (wf, wr, dfront, cfront, drear, crear)},
         "hardpoints": {k: [v[0], v[1], v[2]] for k, v in corners.items()},
+        "geometry_sources": {"interior": "roadster_interior.build", "wheels": "roadster_wheels.build (wheels, brakes, Susp_* rig)"},
+        "export_contract": {
+            "static": "car-space evaluated geometry with identity object transform; UE component transform stays identity",
+            "moving": "pivot-local evaluated geometry; translation removed; existing rest rotations baked except Yoke",
+            "Yoke": "unrotated local geometry; UE applies base pitch -24deg then local X steering at manifest pivot",
+            "wheels": "wheel-centred LEFT-side templates; right side uses runtime 180deg flip; discs/calipers already contain inboard offset",
+            "screen_uvs": "preserved authored 0..1 UVs; normals face driver; no smart projection on screens",
+        },
     }
+    validate_cabin_contract(interior)
 
     if DO_VIEWS:
         setup_render(sc, 3440, 1024)
@@ -378,40 +404,58 @@ def main():
         rlow = camera("CamRearLow", (-13.0, 0, 0.62), (math.radians(91.2), 0, -math.pi / 2), lens=125)
         render(sc, rlow, os.path.join(OUT, "rear_low.png"), 1600, 1000)
 
-    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(SCRIPT_DIR, "..", "Roadster.blend"))
+    blend_path = os.path.join(OUT, "RoadsterCandidate.blend") if CANDIDATE else os.path.join(SCRIPT_DIR, "..", "Roadster.blend")
+    bpy.ops.wm.save_as_mainfile(filepath=blend_path)
     if DO_EXPORT:
         export_fbx()
 
 
 def export_fbx():
-    exp = os.path.join(SCRIPT_DIR, "..", "export")
+    exp = os.path.join(OUT, "export") if CANDIDATE else os.path.join(SCRIPT_DIR, "..", "export")
     os.makedirs(exp, exist_ok=True)
     names = EXPORT_SET["static"] + list(EXPORT_SET["moving"].keys()) + list(EXPORT_SET["wheels"].keys())
     for n in names:
         ob = bpy.data.objects[n]
-        ob.hide_viewport = False; ob.hide_render = False
-        saved = ob.location.copy(), ob.rotation_euler.copy()
+        # Export evaluated copies so authored transforms, visibility and geometry
+        # remain intact even on failure. Explicit car-space baking removes any
+        # dependency on the FBX importer's TransformVertexToAbsolute default.
+        hidden = ob.hide_viewport
+        ob.hide_viewport = False
+        bpy.context.view_layer.update()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        evaluated = ob.evaluated_get(depsgraph)
+        mesh = bpy.data.meshes.new_from_object(evaluated, preserve_all_data_layers=True, depsgraph=depsgraph)
+        bake = ob.matrix_world.copy()
         if n in EXPORT_SET["moving"] or n in EXPORT_SET["wheels"]:
-            ob.location = (0, 0, 0)          # pivot at the mesh origin; Unreal places the component
+            bake.translation = (0, 0, 0)
             if n == "Yoke":
-                ob.rotation_euler = (0, 0, 0)
+                bake = Matrix.Diagonal((*ob.scale, 1.0))
+        mesh.transform(bake)
+        export_ob = bpy.data.objects.new("Export_" + n, mesh)
+        bpy.context.collection.objects.link(export_ob)
+        EXPORT_SET.setdefault("material_slots", {})[n] = [m.name for m in mesh.materials]
         for o in bpy.context.selected_objects:
             o.select_set(False)
-        ob.select_set(True)
-        bpy.context.view_layer.objects.active = ob
-        if not ob.data.uv_layers:
+        export_ob.select_set(True)
+        bpy.context.view_layer.objects.active = export_ob
+        if not mesh.uv_layers:
             # carbon weave, suede and paint flakes need UVs: smart-project anything that has none
             bpy.ops.object.mode_set(mode='EDIT')
             bpy.ops.mesh.select_all(action='SELECT')
             bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.01, scale_to_bounds=False)
             bpy.ops.object.mode_set(mode='OBJECT')
-        bpy.ops.export_scene.fbx(filepath=os.path.join(exp, "SM_%s.fbx" % n), use_selection=True, apply_scale_options='FBX_SCALE_UNITS',
-                                 axis_forward='X', axis_up='Z', object_types={'MESH'}, use_mesh_modifiers=True, mesh_smooth_type='FACE',
-                                 bake_space_transform=True, add_leaf_bones=False)
-        ob.location, ob.rotation_euler = saved
+        try:
+            bpy.ops.export_scene.fbx(filepath=os.path.join(exp, "SM_%s.fbx" % n), use_selection=True, apply_scale_options='FBX_SCALE_UNITS',
+                                     axis_forward='X', axis_up='Z', object_types={'MESH'}, use_mesh_modifiers=True, mesh_smooth_type='FACE',
+                                     bake_space_transform=True, add_leaf_bones=False)
+        finally:
+            bpy.data.objects.remove(export_ob, do_unlink=True)
+            bpy.data.meshes.remove(mesh)
+            ob.hide_viewport = hidden
     with open(os.path.join(exp, "manifest.json"), "w") as f:
         json.dump(EXPORT_SET, f, indent=1)
-    write_rig_header(EXPORT_SET)
+    if not CANDIDATE:
+        write_rig_header(EXPORT_SET)
     print("EXPORTED", len(names))
 
 
@@ -449,4 +493,26 @@ def write_rig_header(es):
         f.write("\n".join(lines) + "\n")
 
 
-main()
+def validate_cabin_contract(parts):
+    """Fail early on missing legacy names, flipped displays or invalid yoke pose."""
+    bpy.context.view_layer.update()
+    required = {"Interior", "Seat_Driver", "Seat_Passenger", "Yoke", "Screen_Bezel", "Screen_Display", "Forward_Display_A", "Forward_Display_B"}
+    if set(parts) != required:
+        raise RuntimeError("Detailed cabin names differ from the pawn contract: " + str(set(parts) ^ required))
+    screens = {}
+    for name in ("Screen_Display", "Forward_Display_A", "Forward_Display_B"):
+        ob = parts[name]
+        if len(ob.data.polygons) != 1 or not ob.data.uv_layers:
+            raise RuntimeError("Display must retain one authored UV quad: " + name)
+        normal = (ob.matrix_world.to_3x3() @ ob.data.polygons[0].normal).normalized()
+        toward_eye = (roadster_interior.EYE - ob.matrix_world.translation).normalized()
+        score = float(normal.dot(toward_eye))
+        if score < 0.5:
+            raise RuntimeError("Display normal faces away from driver: %s (%f)" % (name, score))
+        screens[name] = {"normal_dot_toward_eye": score, "location": list(ob.location), "rotation_radians": list(ob.rotation_euler),
+                         "material_slots": [m.name for m in ob.data.materials]}
+    EXPORT_SET["cabin_contract"] = {"screens": screens, "yoke_pivot": list(parts["Yoke"].location), "yoke_preview_pitch_degrees": math.degrees(parts["Yoke"].rotation_euler.y)}
+
+
+if __name__ == "__main__":
+    main()

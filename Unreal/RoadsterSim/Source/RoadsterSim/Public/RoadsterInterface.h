@@ -11,7 +11,7 @@ class UCanvas;
 UENUM()
 enum class ECarTab : uint8 { Home, Vehicle, Listen, Climate, Navigate };
 UENUM()
-enum class EVehiclePage : uint8 { Dynamics, Suction, Tires, Thrusters, Lights, Display, Charging };
+enum class EVehiclePage : uint8 { Dynamics, Suction, Tires, Thrusters, Lights, Display, Charging, ColdGas };
 
 /**
  * The Roadster's centre touchscreen and the two forward displays, recreated from Tesla's official
@@ -73,6 +73,7 @@ private:
 	void PageSuction(float X, float Y, float W, float H);
 	void PageTires(float X, float Y, float W, float H);
 	void PageThrusters(float X, float Y, float W, float H);
+	void PageColdGas(float X, float Y, float W, float H);
 	void PageLights(float X, float Y, float W, float H);
 	void PageDisplay(float X, float Y, float W, float H);
 	void PageCharging(float X, float Y, float W, float H);

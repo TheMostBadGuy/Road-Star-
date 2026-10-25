@@ -243,15 +243,15 @@ namespace RoadsterUI
 		}
 	}
 
-	void FContext::Gradient(float X, float Y, float W, float H, const FLinearColor& Top, const FLinearColor& Bottom)
+	void FContext::Gradient(float X, float Y, float W, float H, const FLinearColor& Top, const FLinearColor& Bottom, bool bHorizontal)
 	{
 		if (!Canvas) return;
 		TArray<FCanvasUVTri> Tris;
 		FCanvasUVTri A, B;
 		A.V0_Pos = P(X, Y); A.V1_Pos = P(X + W, Y); A.V2_Pos = P(X, Y + H);
-		A.V0_Color = Top; A.V1_Color = Top; A.V2_Color = Bottom;
+		A.V0_Color = Top; A.V1_Color = bHorizontal ? Bottom : Top; A.V2_Color = bHorizontal ? Top : Bottom;
 		B.V0_Pos = P(X + W, Y); B.V1_Pos = P(X + W, Y + H); B.V2_Pos = P(X, Y + H);
-		B.V0_Color = Top; B.V1_Color = Bottom; B.V2_Color = Bottom;
+		B.V0_Color = bHorizontal ? Bottom : Top; B.V1_Color = Bottom; B.V2_Color = bHorizontal ? Top : Bottom;
 		Tris.Add(A); Tris.Add(B);
 		FCanvasTriangleItem Item(Tris, GWhiteTexture);
 		Item.BlendMode = SE_BLEND_Translucent;

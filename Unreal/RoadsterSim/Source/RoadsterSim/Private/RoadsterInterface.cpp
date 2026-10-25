@@ -268,7 +268,7 @@ void URoadsterInterface::HomeTab()
 // ============================================================================ Vehicle tab
 void URoadsterInterface::VehicleTab()
 {
-	const TArray<FString> Pages = { TEXT("Dynamics"), TEXT("Suction"), TEXT("Tires"), TEXT("Thrusters"), TEXT("Lights"), TEXT("Display"), TEXT("Charging") };
+	const TArray<FString> Pages = { TEXT("Dynamics"), TEXT("Suction"), TEXT("Tires"), TEXT("Thrusters"), TEXT("Lights"), TEXT("Display"), TEXT("Charging"), TEXT("Gas Lab") };
 	float X = 160;
 	for (int32 i = 0; i < Pages.Num(); ++i)
 	{
@@ -289,6 +289,7 @@ void URoadsterInterface::VehicleTab()
 	case EVehiclePage::Lights: PageLights(PX, PY, PW, PH); break;
 	case EVehiclePage::Display: PageDisplay(PX, PY, PW, PH); break;
 	case EVehiclePage::Charging: PageCharging(PX, PY, PW, PH); break;
+	case EVehiclePage::ColdGas: PageColdGas(PX, PY, PW, PH); break;
 	}
 }
 
@@ -472,6 +473,125 @@ void URoadsterInterface::PageThrusters(float X, float Y, float W, float H)
 		UI.Text(FString::Printf(TEXT("Vessel gas  %.0f K%s"), GT.Tank[0].TempK, GT.Tank[0].bLinerBelowRating ? TEXT("  ·  LINER COLD") : TEXT("")), LX + 24, Y + 612, 22, GT.Tank[0].bLinerBelowRating ? Amber : RedDim);
 		UI.Text(T.TankPercent > 0.98 ? TEXT("BOOST READY") : (T.TankPercent > 0.05 ? TEXT("BOOST AVAILABLE") : TEXT("REFILL REQUIRED")), LX + LW * 0.5f, Y + 660, 30, T.TankPercent > 0.05 ? Red : Amber, EAlign::Center, true);
 	}
+}
+
+void URoadsterInterface::PageColdGas(float X, float Y, float W, float H)
+{
+	// Live piping diagram of the cold-gas system (ColdGasSystem.h): vessels -> isolation valves -> header ->
+	// dome-loaded regulator -> manifold -> one electric valve per nozzle -> CD nozzle. Line brightness follows
+	// pressure, valve glyphs fill with the actual stroke, jets scale with delivered thrust.
+	const Spec& S = Pawn->Sim.S;
+	if (S.TankVolumeL <= 0)
+	{
+		UI.Text(TEXT("No cold-gas augment fitted on Performance"), X + W * 0.5f, Y + H * 0.45f, 34, RedDim, EAlign::Center, true);
+		return;
+	}
+	const ColdGas::System& G = Pawn->Sim.Gas;
+	const ColdGas::Telemetry& GT = G.Tel();
+	auto PCol = [](double Bar, double RefBar) { return A(Red, 0.18f + 0.82f * (float)FMath::Clamp(Bar / RefBar, 0.0, 1.0)); };
+	auto Valve = [&](float CX, float CY, float R, float Open, bool bVertical)
+	{
+		// bow-tie valve symbol; the two triangles fill as the valve strokes open
+		const FLinearColor C = Open > 0.02f ? Red : RedDim;
+		if (!bVertical)
+		{
+			UI.Line(CX - R, CY - R * 0.7f, CX - R, CY + R * 0.7f, C, 2); UI.Line(CX + R, CY - R * 0.7f, CX + R, CY + R * 0.7f, C, 2);
+			UI.Line(CX - R, CY - R * 0.7f, CX + R, CY + R * 0.7f, C, 2); UI.Line(CX - R, CY + R * 0.7f, CX + R, CY - R * 0.7f, C, 2);
+		}
+		else
+		{
+			UI.Line(CX - R * 0.7f, CY - R, CX + R * 0.7f, CY - R, C, 2); UI.Line(CX - R * 0.7f, CY + R, CX + R * 0.7f, CY + R, C, 2);
+			UI.Line(CX - R * 0.7f, CY - R, CX + R * 0.7f, CY + R, C, 2); UI.Line(CX + R * 0.7f, CY - R, CX - R * 0.7f, CY + R, C, 2);
+		}
+		if (Open > 0.02f) UI.Disc(CX, CY, R * 0.45f * FMath::Clamp(Open, 0.f, 1.f) + 2, Red);
+	};
+
+	UI.Text(TEXT("Cold-Gas System"), X, Y + 10, 32, Red, EAlign::Left, true);
+	UI.Text(TEXT("SIMULATION ENGINEERING VIEW - hardware parameters are estimates"), X, Y + H + 4, 18, RedDim);
+	UI.Text(FString::Printf(TEXT("nitrogen  ·  %s  ·  %s"), GT.bArmed ? TEXT("ARMED") : TEXT("SAFE"), GT.bRegDropout ? TEXT("UNREGULATED BLOWDOWN") : (GT.bRegLockedUp ? TEXT("REGULATOR LOCK-UP") : TEXT("REGULATING"))),
+		X + 330, Y + 10, 24, GT.bRegDropout ? Amber : RedDim);
+
+	// ---- vessels
+	const float TX = X, TW = 360, TH = 200;
+	const TCHAR* TankNames[2] = { TEXT("COPV A  ·  200 L  ·  trunk"), TEXT("COPV B  ·  400 L  ·  cabin") };
+	const float HeaderX = X + 470;
+	float HeaderTop = 1e9f, HeaderBot = -1e9f;
+	for (int32 t = 0; t < GT.NumTanks; ++t)
+	{
+		const ColdGas::TankTelemetry& Tk = GT.Tank[t];
+		const float TY = Y + 70 + t * (TH + 40);
+		const float Fill = (float)FMath::Clamp(Tk.PressureBar / S.TankFullBar, 0.0, 1.0);
+		UI.Outline(TX, TY, TW, TH, Red, 2);
+		UI.Rect(TX + 4, TY + 4 + (TH - 8) * (1 - Fill), TW - 8, (TH - 8) * Fill, A(Red, 0.18f));
+		UI.Text(TankNames[GT.NumTanks == 1 ? 0 : t], TX + 16, TY + 24, 20, RedDim);
+		UI.Digits(FString::Printf(TEXT("%d"), FMath::RoundToInt(Tk.PressureBar * kPsiPerBar)), TX + 16, TY + 92, 56, Red);
+		UI.Text(TEXT("PSI"), TX + 230, TY + 92, 20, RedDim);
+		UI.Text(FString::Printf(TEXT("gas %.0f °C   liner %.0f °C   %.1f kg"), Tk.TempK - 273.15, Tk.LinerMinK - 273.15, Tk.MassKg), TX + 16, TY + 150, 19, Red);
+		FString Flags;
+		if (Tk.bTwoPhase) Flags += TEXT("N2 CONDENSING  ");
+		if (Tk.bLinerBelowRating) Flags += TEXT("LINER COLD  ");
+		if (Tk.bReliefOpen) Flags += TEXT("RELIEF  ");
+		if (Tk.bCutoff) Flags += TEXT("ISOLATED - RESIDUAL");
+		if (!Flags.IsEmpty()) UI.Text(Flags, TX + 16, TY + 180, 18, Amber, EAlign::Left, true);
+		// isolation valve and the line to the common header
+		const float LY = TY + TH * 0.5f;
+		UI.Line(TX + TW, LY, HeaderX - 50, LY, PCol(Tk.PressureBar, S.TankFullBar), 4);
+		Valve(HeaderX - 30, LY, 16, (float)Tk.IsoOpen, false);
+		UI.Line(HeaderX - 14, LY, HeaderX, LY, PCol(GT.HeaderBar, S.TankFullBar), 4);
+		HeaderTop = FMath::Min(HeaderTop, LY); HeaderBot = FMath::Max(HeaderBot, LY);
+	}
+	const float RegY = 0.5f * (HeaderTop + HeaderBot);
+	UI.Line(HeaderX, HeaderTop, HeaderX, HeaderBot, PCol(GT.HeaderBar, S.TankFullBar), 4);
+	UI.Text(FString::Printf(TEXT("header %.0f bar"), GT.HeaderBar), HeaderX + 10, RegY - 40, 18, RedDim);
+
+	// ---- regulator
+	const float RX = HeaderX + 60, RW = 230, RH = 170;
+	UI.Line(HeaderX, RegY, RX, RegY, PCol(GT.HeaderBar, S.TankFullBar), 4);
+	UI.Outline(RX, RegY - RH * 0.5f, RW, RH, GT.bRegDropout ? Amber : Red, 2);
+	UI.Text(TEXT("REGULATOR"), RX + RW * 0.5f, RegY - RH * 0.5f + 24, 20, RedDim, EAlign::Center, true);
+	UI.Digits(FString::Printf(TEXT("%d"), FMath::RoundToInt(GT.ManifoldBar)), RX + RW * 0.5f, RegY + 4, 46, Red, EAlign::Center);
+	UI.Text(TEXT("bar out"), RX + RW * 0.5f, RegY + 44, 18, RedDim, EAlign::Center);
+	UI.Bar(RX + 16, RegY + RH * 0.5f - 22, RW - 32, 8, (float)GT.RegOpening, Red, false);
+	UI.Text(FString::Printf(TEXT("dome %.0f bar  ·  outlet %.0f °C"), GT.DomeBar, GT.RegOutletK - 273.15), RX + RW * 0.5f, RegY + RH * 0.5f + 26, 18, RedDim, EAlign::Center);
+
+	// ---- manifold and the three banks
+	const float MX = RX + RW + 70;
+	UI.Line(RX + RW, RegY, MX, RegY, PCol(GT.ManifoldBar, 153.0), 4);
+	struct FRow { int32 Id; const TCHAR* Name; };
+	TArray<FRow> Rows = { { 0, TEXT("Rear 1") }, { 1, TEXT("Rear 2") }, { 2, TEXT("Rear 3") }, { 3, TEXT("Rear 4") } };
+	if (S.bHasLiftThrusters)
+	{
+		Rows.Append({ { 4, TEXT("Lift FL") }, { 5, TEXT("Lift FR") }, { 6, TEXT("Lift RL") }, { 7, TEXT("Lift RR") }, { 8, TEXT("Yaw  L") }, { 9, TEXT("Yaw  R") } });
+	}
+	const float RowH = FMath::Min(66.f, (H - 120) / Rows.Num());
+	const float Top = Y + 70, Bot = Top + RowH * (Rows.Num() - 1);
+	UI.Line(MX, FMath::Min(Top, RegY), MX, FMath::Max(Bot, RegY), PCol(GT.ManifoldBar, 153.0), 4);
+	for (int32 r = 0; r < Rows.Num(); ++r)
+	{
+		const ColdGas::NozzleOutput& N = G.Nozzle(Rows[r].Id);
+		const float RYc = Top + RowH * r;
+		const float VX = MX + 90, NX = MX + 170;
+		UI.Line(MX, RYc, VX - 18, RYc, PCol(GT.ManifoldBar, 153.0), 3);
+		Valve(VX, RYc, 14, (float)N.Valve, false);
+		UI.Line(VX + 16, RYc, NX, RYc, PCol(N.PlenumBar, 153.0), 3);
+		// nozzle: converging-diverging bell
+		UI.Line(NX, RYc - 6, NX + 10, RYc - 3, Red, 2); UI.Line(NX, RYc + 6, NX + 10, RYc + 3, Red, 2);
+		UI.Line(NX + 10, RYc - 3, NX + 34, RYc - 13, Red, 2); UI.Line(NX + 10, RYc + 3, NX + 34, RYc + 13, Red, 2);
+		const float JetW = 360.f * (float)FMath::Clamp(N.ThrustFrac, 0.0, 1.2);
+		for (int32 j = 0; j < 12 && JetW > 1; ++j)   // cold jet: bright at the exit, fading downstream
+			UI.Rect(NX + 36 + JetW * j / 12.f, RYc - 9 + j * 0.4f, JetW / 12.f + 1, 18 - j * 0.8f, A(White, 0.85f * (1.f - j / 12.f)));
+		UI.Text(Rows[r].Name, MX + 24, RYc - 22, 17, RedDim);
+		UI.Text(FString::Printf(TEXT("%5.1f kN   %3.0f%%"), N.ThrustN / 1000.0, N.Valve * 100.0), X + W - 230, RYc, 20, N.ThrustN > 50 ? Red : RedDim, EAlign::Left);
+		if (N.ThrustN > 50)
+			UI.Text(FString::Printf(TEXT("M%.1f  %.0f K"), N.ExitMach, N.PlumeTempK), X + W - 380, RYc, 17, RedDim, EAlign::Left);
+	}
+
+	// ---- budget
+	const float FY = Y + H - 30;
+	UI.Rect(X, FY - 34, W, 1, RedFaint);
+	UI.Text(FString::Printf(TEXT("Usable gas %d%%   ·   impulse delivered %.1f kN·s   ·   remaining %.0f kN·s   ·   Δv budget %.0f m/s   ·   flow %.1f kg/s"),
+		FMath::RoundToInt(GT.GasFraction * 100), GT.TotalImpulseNs / 1000.0, G.RemainingImpulseNs() / 1000.0, G.DeltaVBudget(Pawn->Sim.TotalMass()), GT.TotalMassFlowKgS),
+		X, FY, 21, Red);
 }
 
 void URoadsterInterface::PageLights(float X, float Y, float W, float H)

@@ -406,6 +406,12 @@ void ATrackActor::BuildMesh()
 			// ---- tube: inner surface (asphalt band follows the road roll), outer shell, LED strips
 			const float R = FMath::Max(A0.TubeR, A1.TubeR);
 			const int32 NT = 72;
+			// Put floor/ceiling cardinal directions inside faces instead of on shared angular
+			// edges, where floating point ray queries can miss. Circumscribe the ring so
+			// those face centers retain the designed R and meet the entry road without a lip.
+			const float RingPhase = PI / NT;
+			const float RingScale = 1.f / FMath::Cos(RingPhase);
+			const float InnerR = R * RingScale;
 			auto Roll = [](const FTrackSample& Sm)
 			{
 				// road roll relative to the path frame
@@ -419,16 +425,16 @@ void ATrackActor::BuildMesh()
 			auto TubeN = [&](const FTrackSample& Sm, float Phi) { return Sm.QPath.RotateVector(FVector(0, -FMath::Sin(Phi), FMath::Cos(Phi))); };
 			for (int32 k = 0; k < NT; ++k)
 			{
-				const float P0 = 2 * PI * k / NT, P1 = 2 * PI * (k + 1) / NT, Pm = (P0 + P1) * 0.5f;
+				const float P0 = 2 * PI * k / NT + RingPhase, P1 = 2 * PI * (k + 1) / NT + RingPhase, Pm = (P0 + P1) * 0.5f;
 				const bool bRoad = FMath::Abs(WrapPi(Pm - 0.5f * (R0 + R1))) < HalfBand;
 				const int32 Sec = bRoad ? S_Asphalt : S_Tube;
 				const float v0 = bRoad ? (WrapPi(P0 - R0) * R + W2) / (2 * W2) : 0.f, v1 = bRoad ? (WrapPi(P1 - R0) * R + W2) / (2 * W2) : 0.f;
-				B[Sec].Quad(TubeP(A0, P0, R), TubeP(A0, P1, R), TubeP(A1, P0, R), TubeP(A1, P1, R),
+				B[Sec].Quad(TubeP(A0, P0, InnerR), TubeP(A0, P1, InnerR), TubeP(A1, P0, InnerR), TubeP(A1, P1, InnerR),
 					TubeN(A0, P0), TubeN(A0, P1), TubeN(A1, P0), TubeN(A1, P1),
 					FVector2D(A0.S * 0.125f, P0 * R * 0.125f), FVector2D(A0.S * 0.125f, P1 * R * 0.125f), FVector2D(A1.S * 0.125f, P0 * R * 0.125f), FVector2D(A1.S * 0.125f, P1 * R * 0.125f),
 					FVector2D(A0.S, v0), FVector2D(A0.S, v1), FVector2D(A1.S, v0), FVector2D(A1.S, v1));
 				// outer shell
-				const float Ro = R + 0.6f;
+				const float Ro = (R + 0.6f) * RingScale;
 				B[S_Tube].Quad(TubeP(A0, P1, Ro), TubeP(A0, P0, Ro), TubeP(A1, P1, Ro), TubeP(A1, P0, Ro),
 					-TubeN(A0, P1), -TubeN(A0, P0), -TubeN(A1, P1), -TubeN(A1, P0),
 					FVector2D(A0.S * 0.125f, P1 * Ro * 0.125f), FVector2D(A0.S * 0.125f, P0 * Ro * 0.125f), FVector2D(A1.S * 0.125f, P1 * Ro * 0.125f), FVector2D(A1.S * 0.125f, P0 * Ro * 0.125f));
@@ -451,8 +457,8 @@ void ATrackActor::BuildMesh()
 				const FVector Fn = Sm.QPath.GetForwardVector() * (e == 0 ? -1.f : 1.f);
 				for (int32 k = 0; k < NT; ++k)
 				{
-					const float P0 = 2 * PI * k / NT, P1 = 2 * PI * (k + 1) / NT;
-					B[S_Barrier].Quad(TubeP(Sm, P0, R), TubeP(Sm, P1, R), TubeP(Sm, P0, R + 0.6f), TubeP(Sm, P1, R + 0.6f), Fn, Fn, Fn, Fn,
+					const float P0 = 2 * PI * k / NT + RingPhase, P1 = 2 * PI * (k + 1) / NT + RingPhase;
+					B[S_Barrier].Quad(TubeP(Sm, P0, InnerR), TubeP(Sm, P1, InnerR), TubeP(Sm, P0, (R + 0.6f) * RingScale), TubeP(Sm, P1, (R + 0.6f) * RingScale), Fn, Fn, Fn, Fn,
 						FVector2D(0, 0), FVector2D(1, 0), FVector2D(0, 1), FVector2D(1, 1));
 				}
 			}
@@ -512,9 +518,8 @@ void ATrackActor::BuildSupportsAndLights()
 			L->SetRelativeLocation(Sm.Axis);
 			L->RegisterComponent();
 			L->SetIntensityUnits(ELightUnits::Candelas);
-			// matched to the open-air level (sun 10 lux): ~25 lux on the tube wall, so with the exposure range of
-			// the level's post-process volume the tube reads at about the same exposure as outside
-			L->SetIntensity(1500.f);
+			// Industrial tunnel lighting; exposure adapts independently of the outdoor daylight.
+			L->SetIntensity(6000.f);
 			L->SetLightColor(FLinearColor(0.85f, 0.92f, 1.f));
 			L->SetCastShadows(false);
 			L->SetVolumetricScatteringIntensity(0.f);   // per-light volumetric fog scattering is costly
@@ -598,6 +603,8 @@ static FString TrackDir() { return FPaths::ProjectSavedDir() / TEXT("Tracks"); }
 
 bool ATrackActor::SaveToFile(const FString& Name) const
 {
+	if (Name.IsEmpty() || FPaths::GetCleanFilename(Name) != Name || Name.Contains(TEXT(".."))) return false;
+	if (!IFileManager::Get().MakeDirectory(*TrackDir(), true)) return false;
 	TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 	Root->SetStringField(TEXT("name"), Name);
 	Root->SetBoolField(TEXT("closeLoop"), bCloseLoop);
@@ -617,19 +624,31 @@ bool ATrackActor::SaveToFile(const FString& Name) const
 
 bool ATrackActor::LoadFromFile(const FString& Name)
 {
+	if (Name.IsEmpty() || FPaths::GetCleanFilename(Name) != Name || Name.Contains(TEXT(".."))) return false;
 	FString In;
 	if (!FFileHelper::LoadFileToString(In, *(TrackDir() / (Name + TEXT(".json"))))) return false;
 	TSharedPtr<FJsonObject> Root;
 	if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(In), Root) || !Root.IsValid()) return false;
 	TArray<FTrackPiece> NewPieces;
-	for (const TSharedPtr<FJsonValue>& V : Root->GetArrayField(TEXT("pieces")))
+	const TArray<TSharedPtr<FJsonValue>>* JsonPieces = nullptr;
+	FString NewName;
+	if (!Root->TryGetArrayField(TEXT("pieces"), JsonPieces) || !Root->TryGetStringField(TEXT("name"), NewName)) return false;
+	for (const TSharedPtr<FJsonValue>& V : *JsonPieces)
 	{
 		FTrackPiece P;
-		if (FJsonObjectConverter::JsonObjectToUStruct(V->AsObject().ToSharedRef(), &P)) NewPieces.Add(P);
+		if (!V.IsValid() || V->Type != EJson::Object || !V->AsObject().IsValid()) return false;
+		if (!FJsonObjectConverter::JsonObjectToUStruct(V->AsObject().ToSharedRef(), &P)) return false;
+		if ((uint8)P.Type > (uint8)ETrackPiece::BarrelRoll || !FMath::IsFinite(P.Length) || !FMath::IsFinite(P.Radius) ||
+			!FMath::IsFinite(P.Angle) || !FMath::IsFinite(P.Bank) || !FMath::IsFinite(P.Offset) || !FMath::IsFinite(P.Width) ||
+			P.Length < 0.f || P.Length > 10000.f || P.Radius < 0.f || P.Radius > 10000.f || P.Width < 1.f || P.Width > 100.f) return false;
+		const bool NeedsLength = P.Type != ETrackPiece::Turn && P.Type != ETrackPiece::Loop;
+		const bool NeedsRadius = P.Type == ETrackPiece::Turn || P.Type == ETrackPiece::Loop || P.Type == ETrackPiece::Tube || P.Type == ETrackPiece::BarrelRoll || P.Type == ETrackPiece::Corkscrew;
+		if ((NeedsLength && P.Length < 1.f) || (NeedsRadius && P.Radius < 1.f)) return false;
+		NewPieces.Add(P);
 	}
 	if (NewPieces.Num() == 0) return false;
 	Pieces = NewPieces;
-	TrackName = Root->GetStringField(TEXT("name"));
+	TrackName = NewName;
 	Root->TryGetBoolField(TEXT("closeLoop"), bCloseLoop);
 	Rebuild();
 	return true;
