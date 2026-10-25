@@ -1,4 +1,4 @@
-"""Build the Roadster in Blender (background mode).
+﻿"""Build the Roadster in Blender (background mode).
 
 blender -b -P build_roadster.py -- <out_dir> [--views] [--export]
 Blender frame: +X forward, +Y = car's LEFT, +Z up (FBX import into UE flips Y, so UE +Y = right).
@@ -13,6 +13,9 @@ importlib.reload(roadster_body)
 import roadster_parts
 importlib.reload(roadster_parts)
 import json
+import roadster_materials
+importlib.reload(roadster_materials)
+from roadster_materials import mat, materials
 
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = argv[0] if argv else os.path.join(SCRIPT_DIR, "..", "renders")
@@ -33,54 +36,6 @@ def reset_scene():
     return sc
 
 
-def mat(name, color, rough=0.4, metal=0.0, emit=None, alpha=1.0, coat=0.0):
-    m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
-    m.use_nodes = True
-    bsdf = m.node_tree.nodes.get("Principled BSDF")
-    bsdf.inputs["Base Color"].default_value = (*color, 1)
-    m.diffuse_color = (*color, alpha)
-    bsdf.inputs["Roughness"].default_value = rough
-    bsdf.inputs["Metallic"].default_value = metal
-    if coat > 0:
-        bsdf.inputs["Coat Weight"].default_value = coat
-        bsdf.inputs["Coat Roughness"].default_value = 0.08
-    if emit:
-        bsdf.inputs["Emission Color"].default_value = (*emit[0], 1)
-        bsdf.inputs["Emission Strength"].default_value = emit[1]
-    if alpha < 1.0:
-        bsdf.inputs["Alpha"].default_value = alpha
-        bsdf.inputs["Transmission Weight"].default_value = 0.0
-        m.surface_render_method = 'BLENDED' if hasattr(m, "surface_render_method") else None
-    return m
-
-
-def materials():
-    return {
-        "Paint": mat("M_Paint_AnoWhite", (0.80, 0.80, 0.78), rough=0.32, coat=0.4),
-        "Glass": mat("M_Glass_Gold", (0.16, 0.10, 0.06), rough=0.03, metal=0.3, alpha=0.85),
-        "BlackGloss": mat("M_BlackGloss", (0.012, 0.012, 0.014), rough=0.18),
-        "Underbody": mat("M_Underbody", (0.02, 0.02, 0.022), rough=0.7),
-        "RearGlass": mat("M_Glass_Rear", (0.03, 0.025, 0.02), rough=0.05, metal=0.2),
-        "Tire": mat("M_Tire", (0.018, 0.018, 0.018), rough=0.85),
-        "Spoke": mat("M_Wheel_Spoke", (0.01, 0.01, 0.012), rough=0.15, metal=0.6),
-        "Disc": mat("M_Wheel_AeroDisc", (0.55, 0.56, 0.57), rough=0.35, metal=0.2),
-        "Titanium": mat("M_Titanium", (0.62, 0.55, 0.46), rough=0.25, metal=1.0),
-        "LightWhite": mat("M_Light_White", (1, 1, 1), emit=((1, 0.97, 0.92), 30)),
-        "LightRed": mat("M_Light_Red", (0.5, 0.0, 0.0), emit=((1, 0.02, 0.01), 40)),
-        "Amber": mat("M_Light_Amber", (0.6, 0.25, 0.0), emit=((1, 0.4, 0.0), 6)),
-        "Carbon": mat("M_Carbon", (0.025, 0.025, 0.028), rough=0.25, coat=1.0),
-        "Gold": mat("M_Nozzle_Gold", (0.85, 0.62, 0.32), rough=0.2, metal=1.0),
-        "PlateSilver": mat("M_Plate_Silver", (0.70, 0.70, 0.70), rough=0.35, metal=0.9),
-        "Rubber": mat("M_Rubber", (0.02, 0.02, 0.02), rough=0.9),
-        "BrakeDisc": mat("M_Brake_CarbonCeramic", (0.12, 0.12, 0.125), rough=0.45, metal=0.3),
-        "Leather": mat("M_Interior_Ultrawhite", (0.86, 0.86, 0.84), rough=0.55),
-        "Suede": mat("M_Interior_Microsuede", (0.10, 0.10, 0.105), rough=0.95),
-        "InteriorDark": mat("M_Interior_Dark", (0.03, 0.03, 0.032), rough=0.7),
-        "RedAmbient": mat("M_Interior_RedAmbient", (0.4, 0.0, 0.0), emit=((1, 0.03, 0.02), 25)),
-        "Aluminum": mat("M_Aluminum", (0.75, 0.75, 0.76), rough=0.25, metal=1.0),
-        "Screen": mat("M_Screen_Main", (0.0, 0.0, 0.0), emit=((0.6, 0.02, 0.02), 4)),
-        "ScreenSmall": mat("M_Screen_Forward", (0.0, 0.0, 0.0), emit=((0.6, 0.02, 0.02), 4)),
-    }
 
 
 def build_body(M):
@@ -106,10 +61,105 @@ def arch_cutters():
     return cutters
 
 
-def apply_arches(body):
+HEADLIGHT_TRI = ((1.90, 0.779, 0.632), (1.95, 0.608, 0.614), (2.15, 0.677, 0.481))   # top-outer, top-inner, bottom
+
+
+def headlight_frame(side):
+    """Pocket triangle (left side mirrored by `side`) and the facet's outward normal."""
+    a, b, c = (Vector((x, y * side, z)) for x, y, z in HEADLIGHT_TRI)
+    n = (b - a).cross(c - a).normalized()
+    if n.z < 0:
+        n = -n
+    return a, b, c, n
+
+
+def headlight_pocket_cutter(side, M):
+    a, b, c, n = headlight_frame(side)
+    bm = bmesh.new()
+    top = [bm.verts.new(p + n * 0.05) for p in (a, b, c)]
+    bot = [bm.verts.new(p - n * 0.035) for p in (a, b, c)]
+    bm.faces.new(top)
+    bm.faces.new(list(reversed(bot)))
+    for i in range(3):
+        j = (i + 1) % 3
+        bm.faces.new((top[i], bot[i], bot[j], top[j]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    me = bpy.data.meshes.new("PocketCut")
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new("PocketCut", me)
+    bpy.context.collection.objects.link(ob)
+    me.materials.append(M["BlackGloss"])
+    return ob
+
+
+def front_lights(M):
+    """Nose LED bar under the hood lip and the pop-down headlight units inside the facet pockets."""
+    bm = bmesh.new()
+
+    def quad(p0, p1, p2, p3, mat):
+        f = bm.faces.new([bm.verts.new(p) for p in (p0, p1, p2, p3)])
+        f.material_index = mat
+
+    # full-width LED bar: 7 mm tall, 2 cm deep light guide just under the hood lip (z 0.456 in the front photo)
+    x0 = roadster_body.NOSE_X - 0.004
+    n = 48
+    for i in range(n):
+        ya, yb = -0.645 + 1.29 * i / n, -0.645 + 1.29 * (i + 1) / n
+        xa = x0 - 0.012 * (abs(ya) / 0.645) ** 4
+        xb = x0 - 0.012 * (abs(yb) / 0.645) ** 4
+        quad(Vector((xa, ya, 0.4485)), Vector((xb, yb, 0.4485)), Vector((xb, yb, 0.4555)), Vector((xa, ya, 0.4555)), 0)
+    for side in (1, -1):
+        a, b, c, nrm = headlight_frame(side)
+        depth = 0.028
+        A, B, C = a - nrm * depth, b - nrm * depth, c - nrm * depth
+        # reflector bowl (aluminium) on the pocket floor
+        f = bm.faces.new([bm.verts.new(p) for p in (A, B, C)])
+        f.material_index = 2
+        # slim LED module: a row of 6 projector cells along the top edge, plus a thin DRL line
+        top_dir = (B - A)
+        down = ((C - (A + B) * 0.5)).normalized()
+        for k in range(6):
+            t0, t1 = 0.10 + k * 0.135, 0.10 + k * 0.135 + 0.09
+            p0 = A + top_dir * t0 + down * 0.012 + nrm * 0.004
+            p1 = A + top_dir * t1 + down * 0.012 + nrm * 0.004
+            quad(p0, p1, p1 + down * 0.016, p0 + down * 0.016, 0)
+        quad(A + down * 0.004 + nrm * 0.006, B + down * 0.004 + nrm * 0.006, B + down * 0.008 + nrm * 0.006, A + down * 0.008 + nrm * 0.006, 0)
+        # black housing walls between the reflector and the body cut
+        for p, q in ((A, B), (B, C), (C, A)):
+            quad(p, q, q + nrm * (depth - 0.002), p + nrm * (depth - 0.002), 1)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    me = bpy.data.meshes.new("Front_Lights")
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new("Front_Lights", me)
+    bpy.context.collection.objects.link(ob)
+    for k in ("LightWhite", "BlackGloss", "Aluminum"):
+        me.materials.append(M[k])
+    return ob
+
+
+def apply_arches(body, M):
     bpy.context.view_layer.objects.active = body
     body.select_set(True)
     bpy.ops.object.modifier_apply(modifier="Mirror")
+    # Catmull-Clark surfacing of the creased cage (before the arch cuts, so the cuts stay crisp)
+    sub = body.modifiers.new("Subsurf", 'SUBSURF')
+    sub.levels = sub.render_levels = 3
+    sub.use_creases = True
+    sub.boundary_smooth = 'PRESERVE_CORNERS'
+    bpy.ops.object.modifier_apply(modifier=sub.name)
+    # headlight pockets: triangular recesses in the fender inner facets (calibrated front photo)
+    for side in (1, -1):
+        c = headlight_pocket_cutter(side, M)
+        b = body.modifiers.new("Pocket", 'BOOLEAN')
+        b.operation = 'DIFFERENCE'
+        b.solver = 'EXACT'
+        b.material_mode = 'TRANSFER'
+        b.object = c
+        bpy.context.view_layer.objects.active = body
+        bpy.ops.object.modifier_apply(modifier=b.name)
+        bpy.data.objects.remove(c, do_unlink=True)
     for c in arch_cutters():
         b = body.modifiers.new("Arch", 'BOOLEAN')
         b.operation = 'DIFFERENCE'
@@ -118,6 +168,64 @@ def apply_arches(body):
         bpy.context.view_layer.objects.active = body
         bpy.ops.object.modifier_apply(modifier=b.name)
         bpy.data.objects.remove(c, do_unlink=True)
+
+
+def extract_vent(body, M):
+    """Split the hood-vent panel off the subdivided body (exactly flush), leave a dark duct under it."""
+    bm = bmesh.new()
+    bm.from_mesh(body.data)
+    vent_faces = [f for f in bm.faces if f.material_index == 5]
+    vbm = bmesh.new()
+    vmap = {}
+    for f in vent_faces:
+        vbm.faces.new([vmap.setdefault(v, vbm.verts.new(v.co)) for v in f.verts])
+    inner = {v for f in vent_faces for v in f.verts if all(g.material_index == 5 for g in v.link_faces)}
+    for v in inner:
+        v.co.z -= 0.045
+    for f in vent_faces:
+        f.material_index = 2
+    bm.to_mesh(body.data)
+    bm.free()
+    body.data.materials.pop(index=5)
+    # panel: 2 mm shut-line all round, 4 mm thick, origin on the hinge (front edge, centreline)
+    xs = [v.co.x for v in vbm.verts]
+    cx = 0.5 * (max(xs) + min(xs)); sx = 1.0 - 0.004 / (max(xs) - min(xs))
+    ys = [v.co.y for v in vbm.verts]; sy = 1.0 - 0.004 / (max(ys) - min(ys))
+    for v in vbm.verts:
+        v.co.x = cx + (v.co.x - cx) * sx
+        v.co.y *= sy
+    front = max(vbm.verts, key=lambda v: v.co.x - abs(v.co.y))
+    hinge = Vector((max(xs) - 0.002, 0.0, front.co.z))
+    bmesh.ops.recalc_face_normals(vbm, faces=vbm.faces)
+    for v in vbm.verts:
+        v.co -= hinge
+    mesh = bpy.data.meshes.new("Hood_Vent")
+    vbm.to_mesh(mesh)
+    vbm.free()
+    ob = bpy.data.objects.new("Hood_Vent", mesh)
+    bpy.context.collection.objects.link(ob)
+    ob.location = hinge
+    mesh.materials.append(M["Paint"])
+    sol = ob.modifiers.new("Thickness", 'SOLIDIFY')
+    sol.thickness = 0.004
+    sol.offset = -1.0
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.modifier_apply(modifier=sol.name)
+    for p in mesh.polygons:
+        p.use_smooth = True
+    return ob
+
+
+def conform(obj, body, offset):
+    """Snap trim strips (built on the design rows) onto the subdivided body surface."""
+    sw = obj.modifiers.new("Conform", 'SHRINKWRAP')
+    sw.target = body
+    sw.wrap_method = 'NEAREST_SURFACEPOINT'
+    sw.wrap_mode = 'OUTSIDE_SURFACE'
+    sw.offset = offset
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.modifier_apply(modifier=sw.name)
+    return obj
 
 
 def smooth(obj, angle=28):
@@ -191,13 +299,14 @@ def main():
     sc = reset_scene()
     M = materials()
     body = build_body(M)
-    apply_arches(body)
-    smooth(body)
+    apply_arches(body, M)
+    vent = extract_vent(body, M)
+    smooth(body, 24)
     P = roadster_parts
     static = [body]
-    static.append(P.front_lights(M))
+    static.append(front_lights(M))
     static.append(P.tail_lights(M))
-    static.append(P.side_details(M))
+    static.append(conform(P.side_details(M), body, 0.0012))
     static.append(P.splitter(M))
     pl, pt = P.plate(M)
     static += [pl, pt]
@@ -206,7 +315,6 @@ def main():
     copv = P.copv(M)
     interior = P.interior(M)
     wing = P.rear_wing(M)
-    vent = P.hood_vent(M)
     barges = P.barge_boards(M)
     skirt = P.skirts(M)
     fans = []
@@ -253,6 +361,9 @@ def main():
         render(sc, side, os.path.join(OUT, "side_ortho.png"), 3440, 1024)
         front = camera("CamFront", (12.0, 0, 1.55), (math.radians(85.2), 0, math.pi / 2), lens=105)
         render(sc, front, os.path.join(OUT, "front_persp.png"), 2200, 1040)
+        # matched to Tesla's Slide-1 front photo (2200x1040) by least squares on 5 features (residual <= 5 px)
+        fm = camera("CamFrontMatch", (22.10, 0, 1.79), (math.radians(90 - 3.25), 0, math.pi / 2), lens=8829 * 36 / 2200)
+        render(sc, fm, os.path.join(OUT, "front_match.png"), 2200, 1040)
         q34 = camera("Cam34", (7.0, 5.4, 1.45), (math.radians(83), 0, math.radians(128)), lens=55)
         r34 = camera("CamR34", (-6.6, 5.6, 1.7), (math.radians(80), 0, math.radians(-130)), lens=55)
         render(sc, r34, os.path.join(OUT, "rear_three_quarter.png"), 1600, 1000)
@@ -263,6 +374,9 @@ def main():
         render(sc, top, os.path.join(OUT, "top_ortho.png"), 1200, 1200)
         rear = camera("CamRear", (-14.0, 0, 1.6), (math.radians(84), 0, -math.pi / 2), lens=110)
         render(sc, rear, os.path.join(OUT, "rear_persp.png"), 1600, 1000)
+        # low rear view like the Gravity photo (camera below the wing, sees its underside)
+        rlow = camera("CamRearLow", (-13.0, 0, 0.62), (math.radians(91.2), 0, -math.pi / 2), lens=125)
+        render(sc, rlow, os.path.join(OUT, "rear_low.png"), 1600, 1000)
 
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(SCRIPT_DIR, "..", "Roadster.blend"))
     if DO_EXPORT:
@@ -297,7 +411,42 @@ def export_fbx():
         ob.location, ob.rotation_euler = saved
     with open(os.path.join(exp, "manifest.json"), "w") as f:
         json.dump(EXPORT_SET, f, indent=1)
+    write_rig_header(EXPORT_SET)
     print("EXPORTED", len(names))
+
+
+RIG_HEADER = os.path.join(SCRIPT_DIR, "..", "..", "Unreal", "RoadsterSim", "Source", "RoadsterSim", "Public", "RoadsterRig.h")
+
+
+def write_rig_header(es):
+    """Generated C++ constants (Blender frame, metres) so the game always matches the exported model."""
+    lines = ["// GENERATED by Blender/scripts/build_roadster.py (export_fbx) - do not edit by hand.",
+             "// Blender frame: metres, +X forward, +Y = car's LEFT, +Z up. Convert with B2U() in the pawn.",
+             "#pragma once", "", "namespace RoadsterRig", "{",
+             "\tstruct FPivot { const char* Name; double X, Y, Z; };"]
+    piv = es["moving"]
+    lines.append("\tstatic const FPivot Pivots[] = {")
+    for n, p in piv.items():
+        lines.append('\t\t{ "%s", %.5f, %.5f, %.5f },' % (n, p[0], p[1], p[2]))
+    lines.append("\t};")
+    lines.append("\tstatic const int NumPivots = %d;" % len(piv))
+    nz = es.get("nozzles", {})
+    lines.append("\tstruct FNozzle { const char* Name; double X, Y, Z, DX, DY, DZ, ExitDiameter; };")
+    lines.append("\tstatic const FNozzle Nozzles[] = {")
+    for n, d in nz.items():
+        lines.append('\t\t{ "%s", %.5f, %.5f, %.5f, %.4f, %.4f, %.4f, %.4f },' % (n, *d["pos"], *d["dir"], d.get("exit_d", 0.07)))
+    if not nz:
+        lines.append('\t\t{ "none", 0, 0, 0, 0, 0, 0, 0 },')
+    lines.append("\t};")
+    lines.append("\tstatic const int NumNozzles = %d;" % len(nz))
+    lines.append("\tinline const FPivot* FindPivot(const char* Name)")
+    lines.append("\t{")
+    lines.append("\t\tfor (const FPivot& P : Pivots) { const char* a = P.Name; const char* b = Name; while (*a && *a == *b) { ++a; ++b; } if (*a == *b) return &P; }")
+    lines.append("\t\treturn nullptr;")
+    lines.append("\t}")
+    lines.append("}")
+    with open(RIG_HEADER, "w", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
 
 
 main()

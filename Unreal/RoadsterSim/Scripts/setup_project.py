@@ -330,6 +330,23 @@ def build_plume():
     return m
 
 
+def build_xray():
+    """Engineering X-ray view: the body becomes a faint, edge-lit translucent ghost so the cold-gas system,
+    fans and chassis inside are visible. Colour and strength are parameters for the pawn."""
+    m = fresh_material("M_XRay")
+    m.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    m.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    m.set_editor_property("two_sided", True)
+    fr = E(m, unreal.MaterialExpressionFresnel, -900, 150, exponent=2.2, base_reflect_fraction=0.02)
+    col = vec(m, "Tint", (0.35, 0.75, 1.0), -900, -100)
+    strength = scalar(m, "Strength", 1.0, -900, 300)
+    edge = mul(m, fr, strength, -700, 200)
+    prop(mul(m, col, mul(m, edge, const(m, 2.0, -700, 320), -550, 250), -400, 0), MP.MP_EMISSIVE_COLOR)
+    prop(add(m, mul(m, edge, const(m, 0.55, -550, 380), -400, 300), const(m, 0.03, -550, 450), -300, 350), MP.MP_OPACITY)
+    finish(m)
+    return m
+
+
 def build_smoke():
     """Smoke / vapour puffs on instanced spheres: per-instance alpha in custom data 0, soft edges."""
     m = fresh_material("M_Smoke")
@@ -452,7 +469,7 @@ def build_all_materials():
     glass = build_glass()
     carbon = build_carbon()
     tire = build_tire()
-    build_screen(); build_plume(); build_smoke()
+    build_screen(); build_plume(); build_smoke(); build_xray()
     build_track_materials(); build_environment_materials()
     lin = lambda c: tuple((x / 255.0) ** 2.2 for x in c)   # sRGB -> linear
     I = {}

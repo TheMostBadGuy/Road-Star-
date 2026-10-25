@@ -1,4 +1,4 @@
-"""Detail parts for the Roadster: lights, trim, aero devices, thrusters, fans, wheels and interior.
+﻿"""Detail parts for the Roadster: lights, trim, aero devices, thrusters, fans, wheels and interior.
 
 Blender frame (same as roadster_body): +X forward from the wheelbase midpoint, +Y = car's LEFT, +Z up.
 Every part is a separate object whose name maps to an Unreal static mesh (SM_<name>). Moving parts
@@ -6,7 +6,7 @@ Every part is a separate object whose name maps to an Unreal static mesh (SM_<na
 Dimensions: measured from Tesla's official photos (see Research/roadster_specs.md); rear-view
 proportions from the "Gravity" image (car width 2.0 m -> 3 mm/px).
 """
-import bpy, bmesh, math
+import bpy, bmesh, math, os
 from mathutils import Vector, Matrix
 import roadster_body as RB
 
@@ -154,13 +154,28 @@ def front_lights(M):
 
 
 def tail_lights(M):
+    """Rear lighting and trim from the Gravity rear photo (scale ~1.6 mm/px at the tail):
+    a 26 mm full-width red bar (y +-0.86) in a gloss-black band at the top of the rear face, a titanium lip
+    band under it, the rear camera above the plate and red reflector strips at the lower corners."""
     bm = bmesh.new()
     x = RB.TAIL_X - 0.003
-    ys = [i / 40 * 1.66 - 0.83 for i in range(41)]
-    pts = [Vector((x - 0.004, y, 0.896)) for y in ys]
-    ribbon(bm, pts, 0.016, Vector((-1, 0, 0.1)), mat=0)
-    # rear face recess below the light bar (black band behind the plate area)
-    ob = new_obj("Tail_Lights", bm, [M["LightRed"]])
+
+    def strip(y0, y1, z0, z1, dx, mat, n=48, sag=0.0):
+        ys = [y0 + (y1 - y0) * i / n for i in range(n + 1)]
+        top = [bm.verts.new(Vector((x - dx - 0.006 * (abs(y) / 0.86) ** 3, y, z1 - sag * (abs(y) / 0.86) ** 2))) for y in ys]
+        bot = [bm.verts.new(Vector((x - dx - 0.006 * (abs(y) / 0.86) ** 3, y, z0 - sag * (abs(y) / 0.86) ** 2))) for y in ys]
+        for i in range(n):
+            bm.faces.new((bot[i], bot[i + 1], top[i + 1], top[i])).material_index = mat
+    strip(-0.875, 0.875, 0.898, 0.936, 0.001, 1)            # gloss-black surround
+    strip(-0.86, 0.86, 0.904, 0.930, 0.004, 0, sag=0.004)   # the light bar (slight droop at the ends, as photographed)
+    strip(-0.88, 0.88, 0.872, 0.890, 0.002, 2)              # titanium lip band
+    # rear camera housing above the plate
+    box(bm, Vector((x - 0.012, 0, 0.838)), (0.03, 0.06, 0.022), mat=1)
+    # red reflector strips at the lower corners (just above the black lower body)
+    for s in (1, -1):
+        pts = [Vector((x - 0.003, s * (0.70 + 0.16 * i / 8), 0.628)) for i in range(9)]
+        ribbon(bm, pts, 0.008, Vector((-1, 0, 0)), mat=0)
+    ob = new_obj("Tail_Lights", bm, [M["LightRed"], M["BlackGloss"], M["Titanium"]])
     return ob
 
 
@@ -174,7 +189,7 @@ def side_details(M):
         pts = [body_point(x, 4, 5, 0.55, side, out=0.003) for x in (0.985, 0.94, 0.89)]
         ribbon(bm, pts, 0.03, lambda p, s=side: Vector((0, s, 0.1)).normalized(), mat=1)
         # door shut lines: front edge (slanted) and the mid-door cut (from the side photo)
-        for (x0, z0, x1, z1) in ((0.913, 0.80, 0.778, 0.16), (-0.42, 0.88, -0.20, 0.30)):
+        for (x0, z0, x1, z1) in ((0.87, 0.673, 0.775, 0.254), (-0.36, 0.876, -0.20, 0.296)):   # side photo
             pts = []
             for i in range(12):
                 t = i / 11
@@ -184,17 +199,30 @@ def side_details(M):
                 best = None
                 for k in range(41):
                     tt = k / 40
-                    for ra, rb in ((3, 4), (4, 5)):
+                    for ra, rb in ((3, 4), (4, 5), (5, 6)):
                         p = body_point(x, ra, rb, tt, side, out=0.0015)
                         if best is None or abs(p.z - z) < abs(best.z - z):
                             best = p
                 pts.append(best)
             ribbon(bm, pts, 0.004, lambda p, s=side: Vector((0, s, 0)), mat=1)
-    # hood vent panel outline (centre panel of the hood)
-    for y in (0.29, -0.29):
-        pts = [body_point(x, 8, 9, 0.0, 1, out=0.0015) for x in [1.45 + i * 0.05 for i in range(11)]]
-        pts = [Vector((p.x, y, p.z)) for p in pts]
-        ribbon(bm, pts, 0.004, Vector((0.3, 0, 1)), mat=1)
+        # canopy frame bars on the glass (side photo, 2.251 mm/px): a double bar at the front of the door glass
+        # and another where the door glass meets the rear quarter glass (both slant forward towards the roof)
+        for (x0, z0, x1, z1, w) in ((0.755, 0.788, 0.41, 1.092, 0.010), (0.654, 0.786, 0.296, 1.108, 0.010),
+                                    (-0.24, 0.882, -0.40, 1.123, 0.009), (-0.366, 0.891, -0.49, 1.123, 0.009)):
+            pts = []
+            for i in range(14):
+                t = i / 13
+                x = x0 + (x1 - x0) * t
+                z = z0 + (z1 - z0) * t
+                best = None
+                for k in range(61):
+                    tt = k / 60
+                    for ra, rb in ((5, 6), (6, 7), (7, 8)):
+                        p = body_point(x, ra, rb, tt, side, out=0.002)
+                        if best is None or abs(p.z - z) < abs(best.z - z):
+                            best = p
+                pts.append(best)
+            ribbon(bm, pts, w, lambda p, s=side: Vector((0, s, 0.6)).normalized(), mat=1)
     ob = new_obj("Side_Details", bm, [M["Amber"], M["BlackGloss"]])
     return ob
 
@@ -225,15 +253,24 @@ def splitter(M):
 
 def plate(M):
     bm = bmesh.new()
-    # silver "RDSTR" plate, 0.33 x 0.12 m, centred under the light bar
-    box(bm, Vector((RB.TAIL_X - 0.012, 0, 0.700)), (0.012, 0.33, 0.12), mat=0)
+    # silver embossed "RDSTR" plate (US size 305 x 152 mm, photo: 191 x 96 px at 1.6 mm/px), centre z 0.733
+    zc = 0.733
+    box(bm, Vector((RB.TAIL_X - 0.010, 0, zc)), (0.008, 0.305, 0.152), mat=0)
+    # raised rim 6 mm in from the edge
+    for (dy, dz, sy, sz) in ((0, 0.069, 0.29, 0.004), (0, -0.069, 0.29, 0.004), (0.145, 0, 0.004, 0.142), (-0.145, 0, 0.004, 0.142)):
+        box(bm, Vector((RB.TAIL_X - 0.0155, dy, zc + dz)), (0.003, sy, sz), mat=0)
     ob = new_obj("Plate", bm, [M["PlateSilver"]])
     # embossed letters (text object converted to mesh)
-    bpy.ops.object.text_add(location=(RB.TAIL_X - 0.019, 0, 0.700))
+    bpy.ops.object.text_add(location=(RB.TAIL_X - 0.016, 0, zc))
     t = bpy.context.active_object
     t.data.body = "RDSTR"
     t.data.align_x = 'CENTER'; t.data.align_y = 'CENTER'
-    t.data.size = 0.075
+    # tall, narrow square-shouldered letters as on the official plate (Agency FB is the closest system face)
+    font_path = r"C:\Windows\Fonts\AGENCYR.TTF"
+    if os.path.exists(font_path):
+        t.data.font = bpy.data.fonts.load(font_path)
+        t.data.space_character = 1.25
+    t.data.size = 0.118
     t.data.extrude = 0.002
     t.rotation_euler = (math.pi / 2, 0, -math.pi / 2)
     bpy.ops.object.convert(target='MESH')
@@ -339,52 +376,77 @@ def copv(M):
 
 # ----------------------------------------------------------------------------- moving aero
 def rear_wing(M):
-    """Deployable rear wing: 2.05 m span, ~0.34 m chord, short end plates, two swan-neck struts.
+    """Deployable rear wing (Gravity / Augments / World photos): 2.0 m span, 0.40 m chord inverted cambered
+    airfoil with a slight smile, large outward-splayed end plates, two gooseneck struts at y +-0.38 hooking
+    onto the upper surface, red light strip on the trailing edge.
     Built in its deployed (High Downforce) pose; origin at the strut pivot on the deck."""
     bm = bmesh.new()
-    span, chord = 2.05, 0.34
-    # cambered plate (inverted airfoil-ish): leading edge low, trailing edge up
-    nx = 14
-    prof = []
-    for i in range(nx + 1):
-        t = i / nx
-        xc = -t * chord
-        camber = 0.035 * math.sin(math.pi * t)
-        thick = 0.022 * math.sqrt(max(0.0, t)) * (1 - t) * 2.2
-        prof.append((xc, -camber + thick / 2, -camber - thick / 2))
-    zbase = 1.17
-    xbase = -1.90
-    aoa = math.radians(-12)   # trailing edge up
+    span, chord = 2.00, 0.40
+    xle, zbase = -1.90, 1.17
+    aoa = math.radians(-11)                      # trailing edge up
+    m, p, tk = 0.06, 0.40, 0.085                 # NACA-style camber / position / thickness (inverted)
+    n = 28
+    def section(t):
+        xc = (1 - math.cos(math.pi * t)) / 2
+        yt = 5 * tk * (0.2969 * math.sqrt(xc) - 0.1260 * xc - 0.3516 * xc ** 2 + 0.2843 * xc ** 3 - 0.1036 * xc ** 4)
+        yc = m / p ** 2 * (2 * p * xc - xc ** 2) if xc < p else m / (1 - p) ** 2 * ((1 - 2 * p) + 2 * p * xc - xc ** 2)
+        yc = -yc                                 # inverted: camber pushes down
+        return xc, yc - yt, yc + yt             # x, upper surface (pressure side faces up after inversion), lower
+    prof_top, prof_bot = [], []
+    for i in range(n + 1):
+        xc, a, b = section(i / n)
+        prof_top.append((xc, max(a, b)))
+        prof_bot.append((xc, min(a, b)))
     rot = Matrix.Rotation(-aoa, 3, 'Y')
-    sections = []
+    ns = 24
+    rows_t, rows_b = [], []
+    for j in range(ns + 1):
+        y = -span / 2 + span * j / ns
+        dz = 0.035 * (abs(y) / (span / 2)) ** 2       # gentle smile towards the tips
+        base = Vector((xle, y, zbase + dz))
+        rows_t.append([bm.verts.new(base + rot @ Vector((-px * chord, 0, pz * chord))) for (px, pz) in prof_top])
+        rows_b.append([bm.verts.new(base + rot @ Vector((-px * chord, 0, pz * chord))) for (px, pz) in prof_bot])
+    for j in range(ns):
+        for i in range(n):
+            bm.faces.new((rows_t[j][i], rows_t[j][i + 1], rows_t[j + 1][i + 1], rows_t[j + 1][i])).material_index = 0
+            bm.faces.new((rows_b[j][i], rows_b[j + 1][i], rows_b[j + 1][i + 1], rows_b[j][i + 1])).material_index = 0
+        # trailing edge: light strip
+        bm.faces.new((rows_t[j][-1], rows_b[j][-1], rows_b[j + 1][-1], rows_t[j + 1][-1])).material_index = 2
+    for j in (0, ns):
+        bm.faces.new(rows_t[j] + list(reversed(rows_b[j][1:-1]))).material_index = 0
+    # end plates: 0.48 m long, reach 0.20 m below the wing, splayed outward 16 degrees
+    splay = math.radians(16)
     for s in (-1, 1):
-        sec_top = [bm.verts.new(Vector((xbase, s * span / 2, zbase)) + rot @ Vector((p[0], 0, p[1]))) for p in prof]
-        sec_bot = [bm.verts.new(Vector((xbase, s * span / 2, zbase)) + rot @ Vector((p[0], 0, p[2]))) for p in prof]
-        sections.append((sec_top, sec_bot))
-    (lt, lb), (rt, rb) = sections
-    for i in range(nx):
-        bm.faces.new((lt[i], lt[i + 1], rt[i + 1], rt[i])).material_index = 0
-        bm.faces.new((lb[i], rb[i], rb[i + 1], lb[i + 1])).material_index = 0
-    bm.faces.new((lt[0], rt[0], rb[0], lb[0])).material_index = 0
-    bm.faces.new((lt[-1], lb[-1], rb[-1], rt[-1])).material_index = 2   # trailing edge carries a red light strip
-    for (st, sb) in sections:
-        bm.faces.new(st + list(reversed(sb[1:-1]))).material_index = 0
-    # end plates
+        y0 = s * (span / 2 + 0.004)
+        tip = 0.035
+        outline = [(-0.02, 0.055), (-0.46, 0.085), (-0.44, -0.20), (-0.06, -0.15)]
+        for off, mat in ((0.0, 0), (0.007, 0)):
+            pts = []
+            for (dx, dz) in outline:
+                yo = y0 + s * (off + max(0.0, -dz) * math.tan(splay))
+                pts.append(bm.verts.new(Vector((xle + dx, yo, zbase + tip + dz))))
+            f = bm.faces.new(pts if s > 0 else list(reversed(pts)))
+            f.material_index = mat
+    # gooseneck struts (rectangular section 14 x 55 mm), deck pivot -> up ahead of the wing -> hook onto its top
+    path = [(-2.08, 0.93), (-2.05, 1.01), (-2.00, 1.09), (-1.975, 1.16), (-1.98, 1.225), (-2.01, 1.255), (-2.05, 1.255), (-2.075, 1.232)]
     for s in (-1, 1):
-        box(bm, Vector((xbase - chord / 2, s * (span / 2 + 0.006), zbase - 0.02)), (chord + 0.06, 0.008, 0.12), mat=0)
-    # swan-neck struts: mount on top of the wing, curve down to the deck
-    for s in (-1, 1):
-        y = s * 0.34
-        pts = []
-        for i in range(13):
-            t = i / 12
-            ang = math.pi * t
-            pts.append(Vector((xbase - 0.10 - 0.10 * math.sin(ang * 0.5), y, zbase + 0.045 - (1 - math.cos(ang * 0.5)) * 0.34 - t * 0.0)))
-        ribbon(bm, pts, 0.05, Vector((0, 1, 0)), mat=1)
+        y = s * 0.38
+        pts = [Vector((x, y, z)) for (x, z) in path]
+        prev = None
+        for i, p in enumerate(pts):
+            t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+            side = Vector((0, 1, 0))
+            w = t.cross(side).normalized() * 0.0275
+            ring = [bm.verts.new(p + w + side * 0.007), bm.verts.new(p - w + side * 0.007), bm.verts.new(p - w - side * 0.007), bm.verts.new(p + w - side * 0.007)]
+            if prev:
+                for k in range(4):
+                    bm.faces.new((prev[k], prev[(k + 1) % 4], ring[(k + 1) % 4], ring[k])).material_index = 1
+            prev = ring
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     ob = new_obj("Rear_Wing", bm, [M["Titanium"], M["BlackGloss"], M["LightRed"]])
-    set_origin(ob, (xbase - 0.20, 0.0, 0.93))
+    smooth(ob, 40)
+    set_origin(ob, (-2.10, 0.0, 0.93))
     return ob
-
 
 def hood_vent(M):
     bm = bmesh.new()

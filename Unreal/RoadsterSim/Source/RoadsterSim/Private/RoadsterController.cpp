@@ -28,6 +28,7 @@ void ARoadsterController::BeginPlay()
 	int32 TrackIdx = -1, CamIdx = -1;
 	if (FParse::Value(FCommandLine::Get(), TEXT("track="), TrackIdx))
 		if (ATrackActor* T = Track()) { T->LoadPreset(TrackIdx); T->Rebuild(); if (Car()) Car()->ResetToTrack(true); }
+	if (FParse::Param(FCommandLine::Get(), TEXT("xray")) && Car()) Car()->SetXRay(true);
 	if (FParse::Param(FCommandLine::Get(), TEXT("autodrive")))
 	{
 		bAutopilot = true; SetMode(EUIMode::Driving);
@@ -241,6 +242,7 @@ void ARoadsterController::DriveInput(float Dt)
 		ShowToast(P->bTrackMode ? TEXT("Track Mode  ·  ESC OFF  ·  TCS OFF") : TEXT("Track Mode off"));
 	}
 	if (Pressed(EKeys::H)) { P->ExteriorLights = (P->ExteriorLights + 1) % 4; }
+	if (Pressed(EKeys::I)) { P->SetXRay(!P->bXRay); ShowToast(P->bXRay ? TEXT("Engineering view: cold-gas system, fans, chassis") : TEXT("Engineering view off")); }
 	if (Pressed(EKeys::M)) { P->SetTrim((Trim)(((int32)P->Sim.S.TrimLevel + 1) % 3)); ShowToast(FString::Printf(TEXT("Augment: %s"), *FString(TrimName(P->Sim.S.TrimLevel)))); }
 	if (Pressed(EKeys::N)) { Set.bInfiniteGas = !Set.bInfiniteGas; ShowToast(Set.bInfiniteGas ? TEXT("Unlimited nitrogen (demo)") : TEXT("Real tank")); }
 	if (Pressed(EKeys::B)) { P->Sim.RefillTank(); P->Sim.Recharge(); ShowToast(TEXT("Pit: nitrogen refilled, battery charged")); }

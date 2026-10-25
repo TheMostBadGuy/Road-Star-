@@ -21,6 +21,13 @@ class ATrackActor;
 UENUM()
 enum class ERoadsterCamera : uint8 { Chase, ChaseFar, Cockpit, Hood, Wheel, Orbit, Cinematic };
 
+USTRUCT()
+struct FXRaySaved
+{
+	GENERATED_BODY()
+	UPROPERTY() TArray<TObjectPtr<UMaterialInterface>> Materials;
+};
+
 UCLASS()
 class ROADSTERSIM_API ARoadsterPawn : public APawn
 {
@@ -53,6 +60,11 @@ public:
 	bool bExternalCam = false;
 	FVector ExtCamPos = FVector::ZeroVector;
 	FRotator ExtCamRot = FRotator::ZeroRotator;
+
+	// ------------------------------------------------------------ engineering X-ray view
+	/** Body and trim become an edge-lit translucent ghost so the cold-gas system, fans and chassis show. */
+	bool bXRay = false;
+	void SetXRay(bool bOn);
 
 	// ------------------------------------------------------------ car state toggles (UI)
 	int32 ExteriorLights = 3;      // Off / DRL / On / Auto
@@ -111,6 +123,9 @@ protected:
 	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> TailMID;
 	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> HeadMID;
 	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> PlumeMID;
+	UPROPERTY() TObjectPtr<UMaterialInstanceDynamic> XRayMID;
+	/** Original materials of the components the X-ray view ghosts (restored when it is switched off). */
+	UPROPERTY() TMap<TObjectPtr<UStaticMeshComponent>, FXRaySaved> XRaySaved;
 
 private:
 	double Accumulator = 0.0;
