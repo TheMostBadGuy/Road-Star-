@@ -1,4 +1,4 @@
-// Standalone validation of the Roadster dynamics core against the figures Tesla and its engineers gave.
+﻿// Standalone validation of the Roadster dynamics core against the figures Tesla and its engineers gave.
 // Build + run: Tests/build_harness.bat
 #include "../Unreal/RoadsterSim/Source/RoadsterSim/Public/RoadsterPhysics.h"
 #include <cstdio>
@@ -142,7 +142,7 @@ int main()
 	{
 		Vehicle v = MakeCar(Trim::Rocket); v.Set.Aero = AeroPreset::Custom; v.Set.Fan = FanMode::Off;
 		Inputs in; in.Lift = 1.0; double t = 0, maxZ = 0, airT = 0;
-		while (t < 20 && v.TankKg > 0.01) { v.Step(0.001, in, Flat); t += 0.001; maxZ = std::max(maxZ, v.BodyOriginWorld().z); if (v.T.WheelsInContact == 0) airT += 0.001; }
+		while (t < 20 && v.T.TankPercent > 0.001) { v.Step(0.001, in, Flat); t += 0.001; maxZ = std::max(maxZ, v.BodyOriginWorld().z); if (v.T.WheelsInContact == 0) airT += 0.001; }
 		std::printf("Rocket full lift: max height %.1f m, airborne %.1f s, gas used in %.1f s, roll/pitch error at end %.1f deg\n",
 			maxZ, airT, t, std::acos(Clamp(v.Q.Up().z, -1, 1)) * 180 / kPi);
 	}

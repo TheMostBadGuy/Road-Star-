@@ -182,10 +182,6 @@ def box_uv(bm, faces, uvl, scale=5.0):
             l[uvl].uv = (co[a] * scale, co[b] * scale)
 
 
-def new_faces(bm, before):
-    return [f for f in bm.faces if f.index < 0 or f not in before]
-
-
 class Track:
     """Collect the faces created between two points of the build (bmesh index trick-free)."""
     def __init__(self, bm):
@@ -197,13 +193,20 @@ class Track:
 
 
 # ------------------------------------------------------------------------------------------------ revolve / lofts
-def revolve_y(bm, prof, segs, mat_fn=None, uvl=None, uv_mode="cyl", uv_R=0.35, phi0=0.0):
+def revolve_y(bm, prof, segs, mat_fn=None, uvl=None, uv_mode="cyl", uv_R=0.35, phi0=0.0, closed=None):
     """Revolve (r, y) profile about the wheel axis. Face (P_i[k], P_i[k+1], P_i+1[k+1], P_i+1[k]) has its normal
-    on the (dy, -dr) side of the profile direction. r == 0 points become poles."""
+    on the (dy, -dr) side of the profile direction. r == 0 points become poles. A profile whose last point
+    repeats the first is treated as a closed loop (welded)."""
+    prof = list(prof)
+    if closed is None:
+        closed = len(prof) > 2 and abs(prof[0][0] - prof[-1][0]) < 1e-9 and abs(prof[0][1] - prof[-1][1]) < 1e-9
+    if closed and abs(prof[0][0] - prof[-1][0]) < 1e-9 and abs(prof[0][1] - prof[-1][1]) < 1e-9:
+        prof = prof[:-1]
     n = len(prof)
     L = [0.0]
-    for i in range(1, n):
-        L.append(L[-1] + math.hypot(prof[i][0] - prof[i - 1][0], prof[i][1] - prof[i - 1][1]))
+    for i in range(1, n + (1 if closed else 0)):
+        a, b = prof[i - 1], prof[i % n]
+        L.append(L[-1] + math.hypot(b[0] - a[0], b[1] - a[1]))
     tot = L[-1] or 1.0
     poles = {i: bm.verts.new((0.0, y, 0.0)) for i, (r, y) in enumerate(prof) if r < 1e-7}
     rings = []
@@ -213,8 +216,9 @@ def revolve_y(bm, prof, segs, mat_fn=None, uvl=None, uv_mode="cyl", uv_R=0.35, p
     faces = []
     for k in range(segs):
         A, B = rings[k], rings[(k + 1) % segs]
-        for i in range(n - 1):
-            corners = [(A[i], k, i), (B[i], k + 1, i), (B[i + 1], k + 1, i + 1), (A[i + 1], k, i + 1)]
+        for i in range(n if closed else n - 1):
+            i1 = (i + 1) % n
+            corners = [(A[i], k, i), (B[i], k + 1, i), (B[i1], k + 1, i + 1), (A[i1], k, i + 1)]
             seen, uniq = set(), []
             for c in corners:
                 if c[0] not in seen:
@@ -313,11 +317,14 @@ def sphere(bm, c, r, mat=0, u=12, v=8):
     return fs
 
 
-def rbox_coords(h, r, nmid):
+def rbox_coords(h, r, nmid, seg=4):
     core = max(h - r, 0.0)
-    t = math.tan(math.radians(22.5))
     inner = [-core + 2 * core * i / (nmid + 1) for i in range(1, nmid + 1)] if core > 0 else []
-    vals = [-h, -core - r * t, -core] + inner + [core, core + r * t, h]
+    if seg >= 4:
+        t = math.tan(math.radians(22.5))
+        vals = [-h, -core - r * t, -core] + inner + [core, core + r * t, h]
+    else:
+        vals = [-h, -core] + inner + [core, h]
     out = []
     for v in vals:
         if not out or abs(v - out[-1]) > 1e-9:
@@ -325,12 +332,13 @@ def rbox_coords(h, r, nmid):
     return out
 
 
-def rounded_box(bm, half, r, xform=None, nmid=(1, 1, 1), mat=0):
-    """Box with all edges rounded (radius r, 4 segments per 90 deg), all quads. xform maps local -> world."""
+def rounded_box(bm, half, r, xform=None, nmid=(1, 1, 1), mat=0, seg=4):
+    """Box with all edges rounded (radius r, `seg` segments per 90 deg: 4 or 2), all quads.
+    xform maps local -> world."""
     half = [float(h) for h in half]
     r = min(r, *[h * 0.999 for h in half])
     core = [max(h - r, 0.0) for h in half]
-    coords = [rbox_coords(half[i], r, nmid[i]) for i in range(3)]
+    coords = [rbox_coords(half[i], r, nmid[i], seg) for i in range(3)]
     cache = {}
 
     def V(p):
@@ -370,13 +378,13 @@ def rounded_box(bm, half, r, xform=None, nmid=(1, 1, 1), mat=0):
     return faces
 
 
-def rbox_at(bm, center, half, r, axes=None, mat=0, nmid=(1, 1, 1)):
-    """Rounded box with local axes (3 column vectors) at `center`."""
+def rbox_at(bm, center, half, r, axes=None, mat=0, nmid=(1, 1, 1), seg=2):
+    """Rounded box with local axes (3 column vectors) at `center` (2 segments per rounded edge by default)."""
     if axes is None:
         axes = (Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1)))
     c = Vector(center)
     X, Y, Z = [Vector(a).normalized() for a in axes]
-    return rounded_box(bm, half, r, xform=lambda q: c + X * q.x + Y * q.y + Z * q.z, nmid=nmid, mat=mat)
+    return rounded_box(bm, half, r, xform=lambda q: c + X * q.x + Y * q.y + Z * q.z, nmid=nmid, mat=mat, seg=seg)
 
 
 def extrude_polygon(bm, pts2d, frame, z0, z1, mat=0):
@@ -497,7 +505,7 @@ def groove_at(vm, kk):
     p, c = divmod(kk, 6)
     if 0.345 < vm < 0.375 or 0.585 < vm < 0.615:
         return True
-    if c == 0 and -0.085 < vm < 0.27:
+    if c == 0 and -0.055 < vm < 0.27:
         return True
     if c == 3 and p % 2 == 0 and 0.375 < vm < 0.50:
         return True
@@ -684,9 +692,9 @@ def tire_lettering(bm, g, uvl, mat_black, mat_white):
     r0 = g["r_lo"] + 0.0005                       # inner edge of the visible sidewall
     band = (g["R"] - 0.004 - g["rs"]) - r0        # visible sidewall height
     for rot in (0.0, 180.0):
-        sidewall_text(bm, g, "TROFEO R", "arialbi.ttf", 0.0245 * k, 157 + rot, r0 + 0.13 * band, mat_white,
-                      sx=1.05, spacing=1.12)
-        sidewall_text(bm, g, "P ZERO", "arialbi.ttf", 0.0285 * k, 195 + rot, r0 + 0.12 * band, mat_black,
+        sidewall_text(bm, g, "TROFEO R", "arialbi.ttf", 0.0305 * k, 157 + rot, r0 + 0.25 * band, mat_white,
+                      sx=1.05, spacing=1.10)
+        sidewall_text(bm, g, "P ZERO", "arialbi.ttf", 0.0285 * k, 196 + rot, r0 + 0.22 * band, mat_black,
                       sx=1.1, spacing=1.05)
         sidewall_text(bm, g, "PIRELLI", "arialbd.ttf", 0.0265 * k, 72 + rot, r0 + 0.36 * band, mat_black,
                       sx=1.35, spacing=1.0)
@@ -720,25 +728,34 @@ def build_barrel(bm, g, uvl, mat):
     return faces
 
 
+SPOKE_HW = [(0.034, 0.0215), (0.070, 0.0250), (0.100, 0.0268), (0.150, 0.0272), (0.240, 0.0270),
+            (0.262, 0.0285), (0.272, 0.0300)]          # spoke half width vs distance along the axis (x k)
+
+
 def insert_delta_fn(g):
-    """Half-angle (rad) occupied by a spoke slot at radius rho. The slot edges are straight lines that diverge
-    from the spoke towards the hub (gap ~6 mm at the rim, ~27 mm at r = 120 mm, as in the photos)."""
+    """Half-angle (rad) occupied by a spoke slot at radius rho. Measured on the side photo: the 54 mm spoke sits
+    in a slot whose edges run ~3.5 mm clear of it from the rim down to r ~ 190 mm, then diverge towards the hub
+    (gap ~13 mm at r ~ 110 mm) - the gold-lit wedges seen next to every spoke near the hub."""
     k = g["k"]
-    o_rim, s_rim, gs = 0.033 * k, g["r_io"], 0.130
-    A = o_rim + gs * s_rim
+    o0, s_k, gs = (0.0270 + 0.0035) * k, 0.190 * k, 0.16
+
+    def o(s):
+        return o0 + max(0.0, s_k - s) * gs
 
     def delta(rho):
-        a = 1 + gs * gs
-        b = -2 * A * gs
-        c = A * A - rho * rho
-        s = (-b + math.sqrt(max(b * b - 4 * a * c, 0.0))) / (2 * a)
-        return math.atan2(A - gs * s, s)
+        s = bisect(lambda s: s * s + o(s) ** 2 - rho * rho, 0.0, rho, it=50)
+        if s is None:
+            return math.pi / 2
+        return math.atan2(o(s), s)
     return delta
 
 
-def build_inserts(bm, g, uvl, mat):
-    """Six flat light-grey aero panels between the spokes: 16 mm recess, raised outer band with a soft step
-    at r ~ 230 mm, chamfered edges, 4 mm thick."""
+def build_inserts(bm, g, uvl, mat, mat_edge):
+    """Six flat light-grey aero panels between the spokes: field 16 mm behind the lip face; at r ~ 230 mm a
+    4.5 mm step up to an outer band that rises gently to meet the lip (the ring seen in the side photo; the band
+    must clear the tyre bead, which sits inboard of the flange); rolled 4.5 mm edges along the slots and round
+    the tips in a machined (titanium-look) finish - the bright outlines that frame every panel in the photo;
+    4 mm thick."""
     trk = Track(bm)
     k, r_io, y_f = g["k"], g["r_io"], g["y_f"]
     delta = insert_delta_fn(g)
@@ -746,45 +763,56 @@ def build_inserts(bm, g, uvl, mat):
     r_step = 0.2295 * k
 
     def ytop(rho):
-        if rho >= r_step + 0.0012:
-            return y_f + 0.0030 + (rho - r_step - 0.0012) / (r_io - r_step - 0.0012) * 0.0075
-        if rho <= r_step - 0.0012:
+        if rho >= r_step + 0.001:
+            return y_f + 0.0045 + (rho - r_step - 0.001) / (r_io - r_step - 0.001) * 0.0030
+        if rho <= r_step - 0.001:
             return y_f
-        return y_f + 0.0030 * (rho - r_step + 0.0012) / 0.0024
+        return y_f + 0.0045 * (rho - r_step + 0.001) / 0.002
 
     rows = [r_io, r_io - 0.0016]
-    rows += [r_step + 0.0012 + (r_io - 0.0016 - r_step - 0.0012) * t for t in (0.66, 0.33, 0.0)]
-    rows += [r_step - 0.0012]
-    inner_top = r_step - 0.0012
+    rows += [r_step + 0.001 + (r_io - 0.0016 - r_step - 0.001) * t for t in (0.66, 0.33, 0.0)]
+    rows += [r_step - 0.001]
+    inner_top = r_step - 0.001
     nin = 7
     for i in range(1, nin + 1):
-        rows.append(inner_top - (inner_top - (rho_apex + 0.004)) * i / nin)
+        rows.append(inner_top - (inner_top - (rho_apex + 0.005)) * i / nin)
+    EDGE = ((0.0, 0.0022), (0.0020, 0.0007), (0.0045, 0.0))      # (inset, drop) of the rolled slot edge
+    all_edge = []
     for ins in range(6):
         beta = (SPOKE_PHI[ins] + 30) * D2R
         top, back = [], []
         for ri, rho in enumerate(rows):
             half = max(30 * D2R - delta(rho), 1e-4)
-            dt = min(0.0016 / (rho * half), 0.45)
-            ts = [-1.0, -1.0 + dt, -0.66, -0.33, 0.0, 0.33, 0.66, 1.0 - dt, 1.0]
+            span = rho * half
+            cols = []
+            for inset, drop in EDGE:
+                cols.append((-1.0 + min(inset / span, 0.30 + 0.08 * inset / 0.0045), drop))
+            cols += [(-0.5, 0.0), (-0.17, 0.0), (0.17, 0.0), (0.5, 0.0)]
+            cols += [(-t, dr) for (t, dr) in reversed(cols[:3])]
             yt = ytop(rho)
             trow, brow = [], []
-            for ti, t in enumerate(ts):
-                edge = ti in (0, len(ts) - 1) or ri == 0
+            for ti, (t, drop) in enumerate(cols):
+                if ri == 0:
+                    drop = max(drop, 0.0012)
                 phi = beta + t * half
-                trow.append(bm.verts.new(W(rho, phi, yt - (0.0012 if edge else 0.0))))
+                trow.append(bm.verts.new(W(rho, phi, yt - drop)))
                 brow.append(bm.verts.new(W(rho, phi, yt - 0.004)))
             top.append(trow)
             back.append(brow)
-        at = bm.verts.new(W(rho_apex, beta, ytop(rho_apex) - 0.0012))
+        at = bm.verts.new(W(rho_apex, beta, ytop(rho_apex) - 0.0022))
         ab = bm.verts.new(W(rho_apex, beta, ytop(rho_apex) - 0.004))
         I, J = len(rows) - 1, len(top[0]) - 1
+        edge_faces = []
         for i in range(I):
             for j in range(J):
-                bm.faces.new((top[i][j], top[i][j + 1], top[i + 1][j + 1], top[i + 1][j]))
+                f = bm.faces.new((top[i][j], top[i][j + 1], top[i + 1][j + 1], top[i + 1][j]))
+                if j < 2 or j >= J - 2:
+                    edge_faces.append(f)
                 bm.faces.new((back[i + 1][j], back[i + 1][j + 1], back[i][j + 1], back[i][j]))
         for j in range(J):
-            bm.faces.new((top[I][j], top[I][j + 1], at))
+            edge_faces.append(bm.faces.new((top[I][j], top[I][j + 1], at)))
             bm.faces.new((back[I][j + 1], back[I][j], ab))
+        all_edge.extend(edge_faces)
         loop_t = top[0][:] + [top[i][J] for i in range(1, I + 1)] + [at] + [top[i][0] for i in range(I, 0, -1)]
         loop_b = back[0][:] + [back[i][J] for i in range(1, I + 1)] + [ab] + [back[i][0] for i in range(I, 0, -1)]
         n = len(loop_t)
@@ -793,6 +821,7 @@ def build_inserts(bm, g, uvl, mat):
             bm.faces.new((loop_t[i], loop_b[i], loop_b[j], loop_t[j]))
     faces = trk.faces()
     set_mat(faces, mat)
+    set_mat(all_edge, mat_edge)
     recalc(bm, faces)
     planar_uv(bm, faces, uvl, g["r_lo"])
     return faces, rho_apex
@@ -808,8 +837,7 @@ def build_spokes(bm, g, uvl, mat_spoke, mat_ti):
                          0.252, 0.260, 0.266, 0.272)]
     YR = [(0.034 * k, 0.0100), (0.100 * k, 0.0095), (0.200 * k, 0.0072), (0.240 * k, 0.0042),
           (0.252 * k, 0.0012), (0.262 * k, -0.0020), (0.272 * k, -0.0045)]
-    HW = [(0.034 * k, 0.0195 * k), (0.065 * k, 0.0215 * k), (0.100 * k, 0.0232 * k), (0.150 * k, 0.0248 * k),
-          (0.200 * k, 0.0255 * k), (0.240 * k, 0.0262 * k), (0.262 * k, 0.0278 * k), (0.272 * k, 0.0290 * k)]
+    HW = [(s * k, w * k) for (s, w) in SPOKE_HW]
     yb = y_f - 0.030
     uR = -0.006 * k
     for i in range(6):
@@ -820,15 +848,15 @@ def build_spokes(bm, g, uvl, mat_spoke, mat_ti):
         for s in S:
             hw = lerp_table(HW, s)
             yr = yl + lerp_table(YR, s)
-            sec = [(hw, yb), (hw, yr - 0.0100), (hw - 0.0015, yr - 0.0085), (uR + 0.0025, yr - 0.0003),
-                   (uR - 0.0015, yr - 0.0003), (-hw + 0.0065 * k, yr - 0.0060), (-hw, yr - 0.0135), (-hw, yb)]
+            sec = [(hw, yb), (hw, yr - 0.0100), (hw - 0.0015, yr - 0.0085), (uR, yr),
+                   (-hw + 0.0040 * k, yr - 0.0068), (-hw, yr - 0.0120), (-hw, yb)]
             stations.append([bm.verts.new(d * s + nn * u + Vector((0, y, 0))) for (u, y) in sec])
         ns = len(stations[0])
         for m in range(len(S) - 1):
             A, B = stations[m], stations[m + 1]
             for e in range(ns):
                 f = bm.faces.new((A[e], A[(e + 1) % ns], B[(e + 1) % ns], B[e]))
-                f.material_index = mat_ti if e == 5 else mat_spoke
+                f.material_index = mat_ti if e == 4 else mat_spoke
         bm.faces.new(stations[0]).material_index = mat_spoke
         bm.faces.new(list(reversed(stations[-1]))).material_index = mat_spoke
     faces = trk.faces()
@@ -853,7 +881,13 @@ def build_boss(bm, g, uvl, mat):
     faces, _ = revolve_y(bm, list(reversed(prof)), 72, mat_fn=lambda i: mat, uvl=uvl, uv_mode="planar",
                          uv_R=g["r_lo"])
     recalc(bm, faces)
-    return faces
+    # solid centre disc of the wheel behind the windows between the spoke roots (they read black in the photos)
+    k, yp = g["k"], g["y_f"] - 0.012
+    plate = [(0.050 * k, yp), (0.104 * k, yp), (0.107 * k, yp - 0.003), (0.107 * k, yp - 0.006),
+             (0.050 * k, yp - 0.006), (0.050 * k, yp)]
+    fs, _ = revolve_y(bm, plate, 72, mat_fn=lambda i: mat, uvl=uvl, uv_mode="planar", uv_R=g["r_lo"])
+    recalc(bm, fs)
+    return faces + fs
 
 
 def build_emblem(bm, g, uvl, mat):
@@ -888,7 +922,7 @@ def build_wheel(M, key):
     build_tire(bm, g, uvl, 0)
     tire_lettering(bm, g, uvl, 0, 1)
     build_barrel(bm, g, uvl, 2)
-    build_inserts(bm, g, uvl, 3)
+    build_inserts(bm, g, uvl, 3, 4)
     build_spokes(bm, g, uvl, 2, 4)
     build_boss(bm, g, uvl, 2)
     build_emblem(bm, g, uvl, 4)
@@ -984,8 +1018,8 @@ def build_disc(M, key):
     for i in range(nv):
         ph0 = 2 * math.pi * i / nv
         pts = []
-        for j in range(5):
-            u = j / 4
+        for j in range(3):
+            u = j / 2
             r = r_i + 0.003 + (r_o - 0.0015 - r_i - 0.003) * u
             pts.append((r, ph0 + 0.32 * u * u))
         secs = []
@@ -1008,25 +1042,19 @@ def build_disc(M, key):
     prof = [(0.036, et), (0.090, et), (0.094, et - 0.0015), (0.096, et - 0.006), (0.099, yo - 0.002),
             (r_i - 0.0005, yo - 0.002), (r_i - 0.0005, yo - 0.0075), (0.104, yo - 0.0075), (0.102, et - 0.007),
             (0.092, et - 0.0065), (0.036, et - 0.0065), (0.036, et)]
-    fs, _ = revolve_y(bm, prof, 96, mat_fn=lambda i: 1)
+    fs, _ = revolve_y(bm, prof, 64, mat_fn=lambda i: 1)
     recalc(bm, fs)
     # 12 bobbins (drive pins) bridging bell and ring
     for i in range(12):
         ph = 2 * math.pi * (i + 0.5) / 12
         c0 = W(r_i - 0.0005, ph, yo - 0.0075)
         c1 = W(r_i - 0.0005, ph, yo + 0.0018)
-        fs = cylinder(bm, c0, c1, 0.0058, segs=12, mat=2, bevel=0.0008)
-        recalc(bm, fs)
-    # 5 wheel-bolt holes shown as recessed rings on the bell face (PCD 114.3)
-    for i in range(5):
-        ph = 2 * math.pi * i / 5 + math.pi / 2
-        c = W(0.05715, ph, et + 0.0004)
-        fs = cylinder(bm, c - Vector((0, 0.0016, 0)), c, 0.0085, segs=16, mat=2, bevel=0.0004)
+        fs = cylinder(bm, c0, c1, 0.0058, segs=8, mat=2, bevel=0.0008)
         recalc(bm, fs)
     # hub flange and bearing hub (spins)
     prof = [(0.030, et - 0.0065), (0.072, et - 0.0065), (0.072, et - 0.017), (0.046, et - 0.022),
             (0.046, et - 0.047), (0.030, et - 0.047), (0.030, et - 0.0065)]
-    fs, _ = revolve_y(bm, prof, 48, mat_fn=lambda i: 3)
+    fs, _ = revolve_y(bm, prof, 40, mat_fn=lambda i: 3)
     recalc(bm, fs)
     bm.normal_update()
     box_uv(bm, list(bm.faces), uvl, 4.0)
@@ -1075,7 +1103,7 @@ def build_caliper(M, key):
         ac = y_d + sg * 0.5 * (a_in + a_out)
         c = (0.0, 0.5 * (hb + ht0), ac)
         fs = rounded_box(bm, (hl, 0.5 * (ht0 - hb), 0.5 * (a_out - a_in)), 0.011,
-                         xform=lambda q, c=c: kidney(q, c), nmid=(9, 3, 1), mat=0)
+                         xform=lambda q, c=c: kidney(q, c), nmid=(6, 2, 1), mat=0)
         recalc(bm, fs)
         # piston bulges on the outer faces
         np_ = len(g["pistons"])
@@ -1083,17 +1111,14 @@ def build_caliper(M, key):
             s0 = (pi - (np_ - 1) / 2) * (0.087 if np_ == 3 else 0.090)
             prof = [(0.0, 0.0028), (rp - 0.0022, 0.0028), (rp, 0.0012), (rp + 0.0008, -0.003), (0.0, -0.003)]
             base = y_d + sg * a_out
-            local = []
-            for k in range(28):
-                pass
-            fs = revolve_axis(bm, prof, bend(s0, -0.004, base), Vector((0, sg, 0)), 28, mat_fn=lambda i: 0)
+            fs = revolve_axis(bm, prof, bend(s0, -0.004, base), Vector((0, sg, 0)), 20, mat_fn=lambda i: 0)
             # bend correction for the flat bulge is negligible (rp << R0)
             recalc(bm, fs)
     # bridges over the rotor (pad window between them)
     for sg in (-1, 1):
         sc = sg * (hl - 0.045)
         fs = rounded_box(bm, (0.032, 0.0095, 0.062), 0.007,
-                         xform=lambda q, sc=sc: bend(sc + q.x, 0.0305 + q.y, y_d + q.z), nmid=(3, 1, 3), mat=0)
+                         xform=lambda q, sc=sc: bend(sc + q.x, 0.0305 + q.y, y_d + q.z), nmid=(2, 1, 2), mat=0)
         recalc(bm, fs)
     # pads (friction material + backing plates)
     for sg in (1, -1):
@@ -1102,20 +1127,20 @@ def build_caliper(M, key):
             ac = y_d + sg * 0.5 * (a0 + a1)
             hc = 0.5 * (hb0 + ht1)
             fs = rounded_box(bm, (sl, 0.5 * (ht1 - hb0), 0.5 * (a1 - a0)), 0.0025,
-                             xform=lambda q, ac=ac, hc=hc: bend(q.x, hc + q.y, ac + q.z), nmid=(7, 1, 0), mat=mi)
+                             xform=lambda q, ac=ac, hc=hc: bend(q.x, hc + q.y, ac + q.z), nmid=(4, 1, 0), mat=mi, seg=2)
             recalc(bm, fs)
     # pad retaining pin + anti-rattle spring in the window
     fs = cylinder(bm, bend(0, 0.0255, y_d - 0.060), bend(0, 0.0255, y_d + 0.060), 0.0032, segs=12, mat=3,
                   bevel=0.0008)
     recalc(bm, fs)
     fs = rounded_box(bm, (0.030, 0.0009, 0.026), 0.0008, xform=lambda q: bend(q.x, 0.0225 + q.y + 0.004 *
-                     (1 - (q.x / 0.03) ** 2), y_d + q.z), nmid=(5, 0, 3), mat=2)
+                     (1 - (q.x / 0.03) ** 2), y_d + q.z), nmid=(3, 0, 1), mat=2, seg=2)
     recalc(bm, fs)
     # radial mounting lugs + bolts (inboard half)
     for sg in (-1, 1):
         s0 = sg * (hl - 0.030)
         fs = rounded_box(bm, (0.016, 0.017, 0.014), 0.005,
-                         xform=lambda q, s0=s0: bend(s0 + q.x, -0.057 + q.y, y_d - 0.078 + q.z), mat=0)
+                         xform=lambda q, s0=s0: bend(s0 + q.x, -0.057 + q.y, y_d - 0.078 + q.z), mat=0, seg=2)
         recalc(bm, fs)
         p0, p1 = bend(s0, -0.040, y_d - 0.084), bend(s0, -0.033, y_d - 0.084)
         fs = cylinder(bm, p0, p1, 0.0085, segs=6, mat=3, bevel=0.0006)
@@ -1160,7 +1185,7 @@ def corner_hardpoints(corner):
         hp["LBJ"] = WC + Vector((0.000, -0.085, -0.180))
         hp["UBJ"] = WC + Vector((-0.022, -0.125, 0.190))
         hp["TO"] = WC + Vector((0.135, -0.075, 0.025))
-        hp["TI"] = Vector((xa + 0.135, 0.300, WC.z + 0.025))
+        hp["TI"] = Vector((xa + 0.135, 0.400, WC.z + 0.001))      # optimised: < 0.07 deg bump steer over travel
         hp["LF"] = Vector((xa + 0.200, 0.320, 0.155))
         hp["LR"] = Vector((xa - 0.200, 0.320, 0.150))
         hp["UF"] = Vector((xa + 0.160, 0.400, 0.505))
@@ -1171,7 +1196,7 @@ def corner_hardpoints(corner):
         hp["LBJ"] = WC + Vector((0.000, -0.090, -0.185))
         hp["UBJ"] = WC + Vector((0.010, -0.120, 0.195))
         hp["TO"] = WC + Vector((0.145, -0.080, 0.015))
-        hp["TI"] = Vector((xa + 0.145, 0.310, WC.z + 0.015))
+        hp["TI"] = Vector((xa + 0.145, 0.410, WC.z - 0.009))      # optimised: < 0.07 deg bump steer over travel
         hp["LF"] = Vector((xa + 0.210, 0.330, 0.165))
         hp["LR"] = Vector((xa - 0.190, 0.330, 0.165))
         hp["UF"] = Vector((xa + 0.160, 0.420, 0.535))
@@ -1289,7 +1314,7 @@ class CornerKinematics:
 def wheel_angles(R, side):
     a = R @ Vector((0.0, side, 0.0))
     f = R @ Vector((1.0, 0.0, 0.0))
-    camber = math.degrees(math.asin(max(-1.0, min(1.0, a.z))))
+    camber = -math.degrees(math.asin(max(-1.0, min(1.0, a.z))))     # negative = top of the wheel inboard
     toe = math.degrees(math.atan2(f.y, f.x))
     return camber, toe
 
@@ -1314,10 +1339,13 @@ def clevis(bm, c, axis, gap, ear_r, ear_t, toward, length, mat, bolt_mat=None):
     toward = Vector(toward).normalized()
     side_dir = axis.cross(toward).normalized()
     fs = []
+    outline = [(ear_r * math.cos(a), ear_r * math.sin(a))
+               for a in [math.pi / 2 + math.pi * i / 8 for i in range(9)]] + [(length, -ear_r), (length, ear_r)]
+    c = Vector(c)
+    frame = lambda u, v, z: c + toward * u + side_dir * v + axis * z
     for sg in (-1, 1):
-        cc = Vector(c) + axis * sg * (gap / 2 + ear_t / 2) + toward * (length / 2 - ear_r * 0.3)
-        fs += rbox_at(bm, cc, (ear_t / 2, length / 2 + ear_r * 0.3, ear_r), min(ear_r * 0.6, ear_t * 0.45),
-                      axes=(axis, toward, side_dir), mat=mat, nmid=(0, 1, 1))
+        z0, z1 = sorted((sg * gap / 2, sg * (gap / 2 + ear_t)))
+        fs += extrude_polygon(bm, outline, frame, z0, z1, mat)
     if bolt_mat is not None:
         fs += cylinder(bm, Vector(c) - axis * (gap / 2 + ear_t + 0.006), Vector(c) + axis * (gap / 2 + ear_t + 0.006),
                        ear_r * 0.42, segs=6, mat=bolt_mat, bevel=0.001)
@@ -1326,9 +1354,9 @@ def clevis(bm, c, axis, gap, ear_r, ear_t, toward, length, mat, bolt_mat=None):
 
 def rod_end(bm, c, axis, r_out, thick, mat_body, mat_ball, shank_dir=None, shank_len=0.0, shank_r=0.0):
     axis = Vector(axis).normalized()
-    fs = cylinder(bm, Vector(c) - axis * thick / 2, Vector(c) + axis * thick / 2, r_out, segs=16, mat=mat_body,
+    fs = cylinder(bm, Vector(c) - axis * thick / 2, Vector(c) + axis * thick / 2, r_out, segs=14, mat=mat_body,
                   bevel=0.0015)
-    fs += sphere(bm, c, thick * 0.55, mat=mat_ball, u=12, v=8)
+    fs += sphere(bm, c, thick * 0.55, mat=mat_ball, u=10, v=6)
     fs += cylinder(bm, Vector(c) - axis * (thick / 2 + 0.006), Vector(c) + axis * (thick / 2 + 0.006),
                    r_out * 0.32, segs=8, mat=mat_ball)
     if shank_dir is not None and shank_len > 0:
@@ -1349,12 +1377,12 @@ def build_arm(M, corner, hp, which):
     BJ = hp["LBJ"] if lower else hp["UBJ"]
     ax = (PF - PR).normalized()
     kp = (hp["UBJ"] - hp["LBJ"]).normalized()
-    w0 = (0.017, 0.0115) if lower else (0.0145, 0.0100)
-    w1 = (0.014, 0.0100) if lower else (0.0120, 0.0090)
+    w0 = (0.021, 0.0125) if lower else (0.017, 0.0105)
+    w1 = (0.016, 0.0110) if lower else (0.013, 0.0095)
     fs = []
     for P in (PF, PR):
-        fs += cylinder(bm, P - ax * 0.024, P + ax * 0.024, 0.026 if lower else 0.023, segs=18, mat=0, bevel=0.003)
-        fs += cylinder(bm, P - ax * 0.027, P + ax * 0.027, 0.0165 if lower else 0.015, segs=18, mat=1)
+        fs += cylinder(bm, P - ax * 0.024, P + ax * 0.024, 0.026 if lower else 0.023, segs=16, mat=0, bevel=0.003)
+        fs += cylinder(bm, P - ax * 0.027, P + ax * 0.027, 0.0165 if lower else 0.015, segs=12, mat=1)
         fs += cylinder(bm, P - ax * 0.040, P + ax * 0.040, 0.0075, segs=6, mat=2, bevel=0.001)
         d = (BJ - P)
         start = P + d.normalized() * 0.022
@@ -1369,12 +1397,6 @@ def build_arm(M, corner, hp, which):
         a = BJ + (PF - BJ).normalized() * 0.10
         b = BJ + (PR - BJ).normalized() * 0.10
         nrm = (a - BJ).cross(b - BJ).normalized()
-        pts = [BJ, a, hp["PL"] + Vector((0.0, -0.01 if hp["PL"].y > 0 else 0.01, 0.0)), b]
-        for i in range(len(pts)):
-            pass
-        cen = (BJ + a + b) / 3
-        for tri in ((BJ, a, cen), (BJ, cen, b)):
-            pass
         plate_c = (BJ + a + b + hp["PL"]) / 4
         x_ax = (a - b).normalized()
         y_ax = nrm.cross(x_ax).normalized()
@@ -1409,16 +1431,19 @@ def build_upright(M, corner, hp):
     fs += cylinder(bm, WC + Y * (y_in - 0.004), WC + Y * (y_in + 0.016), 0.066, segs=28, mat=0, bevel=0.003)
     # extensions
     ymid = -0.072
-    for BJ, base_z, w in ((hp["UBJ"], 0.045, (0.024, 0.016)), (hp["LBJ"], -0.045, (0.026, 0.018))):
+    # cast web around the bearing housing that the arms grow out of
+    fs += rbox_at(bm, WC + Y * (ymid - 0.004), (0.050, 0.016, 0.072), 0.012,
+                  axes=(Vector((1, 0, 0)), Y, Vector((0, 0, 1))), mat=0, nmid=(1, 0, 1), seg=4)
+    for BJ, base_z, w in ((hp["UBJ"], 0.050, (0.030, 0.015)), (hp["LBJ"], -0.050, (0.034, 0.017))):
         base = WC + Y * ymid + Vector((0, 0, base_z))
         mid = base.lerp(BJ, 0.55) + Y * (-0.006)
         end = BJ
-        fs += loft(bm, [base, mid, end], [w, (w[0] * 0.85, w[1] * 0.9), (w[0] * 0.7, w[1] * 0.8)], n=14, mat=0,
+        fs += loft(bm, [base, mid, end], [w, (w[0] * 0.8, w[1] * 0.95), (w[0] * 0.6, w[1] * 0.9)], n=14, mat=0,
                    up=Y, p=3.0)
         kp = (hp["UBJ"] - hp["LBJ"]).normalized()
         s = 1 if BJ is hp["UBJ"] else -1
         # ball stud + boot towards the arm's housing
-        fs += sphere(bm, BJ, 0.0145, mat=2, u=14, v=10)
+        fs += sphere(bm, BJ, 0.0145, mat=2, u=12, v=8)
         fs += cylinder(bm, BJ - kp * s * 0.004, BJ - kp * s * 0.022, 0.018, segs=16, mat=1, r1=0.013, bevel=0.002)
     # steering arm (front) / toe-link arm (rear) at the leading side
     TO = hp["TO"]
@@ -1505,7 +1530,7 @@ def build_rocker(M, corner, hp):
     return new_mesh_object("Susp_%s_Rocker" % corner, bm, mats, smooth=40.0, pivot=RP)
 
 
-DAMPER = dict(body_end=0.176, thread=(0.080, 0.125), collar=(0.125, 0.137), seat_rod=0.034)
+DAMPER = dict(body_end=0.176, thread=(0.052, 0.090), collar=(0.090, 0.102), seat_rod=0.034)
 
 
 def build_damper(M, corner, hp):
@@ -1521,13 +1546,13 @@ def build_damper(M, corner, hp):
     prof = [(0.0, 0.010), (0.011, 0.010), (0.012, 0.028), (0.019, 0.032), (0.0245, 0.040), (0.0255, 0.046),
             (0.0235, 0.050), (0.0235, DAMPER["thread"][0])]
     t0, t1 = DAMPER["thread"]
-    n = 12
+    n = 10
     for i in range(n):
         ta = t0 + (t1 - t0) * i / n
-        prof += [(0.0262, ta + 0.0012), (0.0262, ta + 0.0022), (0.0248, ta + (t1 - t0) / n)]
+        prof += [(0.0262, ta + 0.0018), (0.0248, ta + (t1 - t0) / n)]
     prof += [(0.0235, DAMPER["collar"][1] + 0.002), (0.0235, DAMPER["body_end"] - 0.008), (0.0200, DAMPER["body_end"] - 0.003),
              (0.0125, DAMPER["body_end"]), (0.0, DAMPER["body_end"])]
-    fs += revolve_axis(bm, prof, DI, ax, 24, mat_fn=lambda i: 0 if i < 7 or i > len(prof) - 6 else 1)
+    fs += revolve_axis(bm, prof, DI, ax, 20, mat_fn=lambda i: 0 if i < 7 or i > len(prof) - 6 else 1)
     # spring collar (lower spring platform) with two lock screws
     c0, c1 = DAMPER["collar"]
     fs += cylinder(bm, DI + ax * c0, DI + ax * c1, 0.043, segs=28, mat=3, bevel=0.002)
@@ -1585,9 +1610,9 @@ def build_spring(M, corner, hp):
     s0 = DI + ax * DAMPER["collar"][1]
     Ls = L0 - DAMPER["seat_rod"] - DAMPER["collar"][1]
     xb, yb, _ = basis(ax)
-    Rm, rw = 0.0335, 0.0065
-    turns = 6.0
-    per = 18
+    Rm, rw = 0.0345, 0.0062
+    turns = 4.8
+    per = 16
     npts = int(turns * per) + 1
     pts = []
     for i in range(npts):
@@ -1666,21 +1691,23 @@ def build_mounts(M, corner, hp):
     for P, Q in ((hp["LF"], hp["LR"]), (hp["UF"], hp["UR"])):
         ax = (P - Q).normalized()
         for J in (P, Q):
-            fs += clevis(bm, J, ax, 0.056, 0.024, 0.006, inward, 0.050, 0, bolt_mat=1)
-            fs += rbox_at(bm, J + inward * 0.050, (0.038, 0.004, 0.032), 0.003,
-                          axes=(Vector((1, 0, 0)), inward, Vector((0, 0, 1))), mat=0)
+            fs += clevis(bm, J, ax, 0.056, 0.019, 0.005, inward, 0.040, 0, bolt_mat=1)
+            fs += rbox_at(bm, J + inward * 0.040, (0.036, 0.004, 0.026), 0.003,
+                          axes=(ax, inward, ax.cross(inward)), mat=0, nmid=(0, 0, 0))
     X = Vector((1, 0, 0))
     RP = hp["RP"]
     down_in = (inward + Vector((0, 0, -0.6))).normalized()
     for sg in (-1, 1):
         cc = RP + X * sg * 0.0375
-        fs += rbox_at(bm, cc + down_in * 0.030, (0.0045, 0.045, 0.034), 0.003,
-                      axes=(X, down_in, X.cross(down_in)), mat=0, nmid=(0, 1, 1))
-    fs += rbox_at(bm, RP + down_in * 0.072, (0.050, 0.004, 0.040), 0.003, axes=(X, down_in, X.cross(down_in)), mat=0)
+        fs += rbox_at(bm, cc + down_in * 0.026, (0.004, 0.038, 0.028), 0.003,
+                      axes=(X, down_in, X.cross(down_in)), mat=0, nmid=(0, 0, 0))
+    fs += rbox_at(bm, RP + down_in * 0.064, (0.046, 0.004, 0.032), 0.003, axes=(X, down_in, X.cross(down_in)), mat=0,
+                  nmid=(0, 0, 0))
     fs += cylinder(bm, RP - X * 0.045, RP + X * 0.045, 0.009, segs=6, mat=1, bevel=0.001)
     DI = hp["DI"]
-    fs += clevis(bm, DI, X, 0.022, 0.020, 0.006, inward, 0.034, 0, bolt_mat=1)
-    fs += rbox_at(bm, DI + inward * 0.034, (0.030, 0.004, 0.028), 0.003, axes=(X, inward, Vector((0, 0, 1))), mat=0)
+    fs += clevis(bm, DI, X, 0.022, 0.018, 0.005, inward, 0.030, 0, bolt_mat=1)
+    fs += rbox_at(bm, DI + inward * 0.030, (0.028, 0.004, 0.024), 0.003, axes=(X, inward, Vector((0, 0, 1))), mat=0,
+                  nmid=(0, 0, 0))
     if not front:
         TI = hp["TI"]
         fs += clevis(bm, TI, Vector((0, 0, 1)), 0.020, 0.018, 0.006, inward, 0.036, 0, bolt_mat=1)
@@ -1701,17 +1728,18 @@ def build_steering_rack(M, hpL):
     TI = hpL["TI"]
     x, z = TI.x, TI.z
     Y = Vector((0, 1, 0))
-    fs = cylinder(bm, Vector((x, -0.215, z)), Vector((x, 0.215, z)), 0.025, segs=24, mat=0, bevel=0.003)
+    yh = TI.y - 0.088
+    fs = cylinder(bm, Vector((x, -yh, z)), Vector((x, yh, z)), 0.025, segs=24, mat=0, bevel=0.003)
     fs += cylinder(bm, Vector((x - 0.055, -0.07, z + 0.015)), Vector((x - 0.055, 0.07, z + 0.015)), 0.045, segs=28,
                    mat=2, bevel=0.006)
     fs += rbox_at(bm, Vector((x - 0.028, 0.0, z + 0.008)), (0.030, 0.050, 0.030), 0.006, mat=2)
     for sg in (-1, 1):
         prof = [(0.0, 0.0), (0.024, 0.0)]
-        for i in range(8):
-            prof += [(0.026, 0.004 + i * 0.0085), (0.019, 0.0085 + i * 0.0085)]
+        for i in range(7):
+            prof += [(0.026, 0.004 + i * 0.0097), (0.019, 0.0090 + i * 0.0097)]
         prof += [(0.014, 0.072), (0.0, 0.072)]
-        fs += revolve_axis(bm, prof, Vector((x, sg * 0.212, z)), Y * sg, 20, mat_fn=lambda i: 1)
-        fs += rbox_at(bm, Vector((x, sg * 0.15, z - 0.032)), (0.030, 0.014, 0.008), 0.003, mat=2)
+        fs += revolve_axis(bm, prof, Vector((x, sg * (yh - 0.003), z)), Y * sg, 16, mat_fn=lambda i: 1)
+        fs += rbox_at(bm, Vector((x, sg * (yh - 0.07), z - 0.032)), (0.030, 0.014, 0.008), 0.003, mat=2)
     recalc(bm, fs)
     bm.normal_update()
     box_uv(bm, list(bm.faces), uvl, 5.0)
@@ -1859,7 +1887,7 @@ def rig_description(corners):
                 (tab["travel_m"][i1] - tab["travel_m"][i0]), 4)
         if front:
             st = {"steer_deg": [], "rack_m": [], "kingpin_deg": [], "upright_quat": [], "TO": [], "TI": []}
-            racks = [i * 0.004 - 0.064 for i in range(33)]
+            racks = [i * 0.005 - 0.090 for i in range(37)]
             poses = []
             for rk in racks:
                 p = kin.pose(0.0, rk)

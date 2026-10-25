@@ -46,13 +46,16 @@ SHELF_X = -2.100                # nozzle shelf back face
 SHELF_LIP_Z = (0.516, 0.531)    # bay ceiling rear lip (bottom, top)
 LIP_Z = 0.312                   # lower apron lip top (centre bays); rises to LIP_Z_OUT at the side walls
 LIP_Z_OUT = 0.336
-FANPLATE_X = (-2.050, -2.040)   # fan bulkhead (rear face, front face)
-CEIL_FAN_Z = 0.540              # bay ceiling underside at the fan bulkhead
-FLOOR_FAN_Z = 0.262             # bay floor at the fan bulkhead
 DUCT_CEIL_Z = 0.545             # duct ceiling centre-plane above the fans
 STRAKE_Y = (-0.295, 0.0, 0.295)
 
-FAN_X, FAN_Z = -1.995, 0.400
+FAN_X, FAN_Z = -1.955, 0.380                  # rotor centre (axis x blade mid-plane)
+FAN_TILT = math.radians(35.0)                    # fan axes pitched up toward the rear (exhaust rearward + upward)
+A_DN = Vector((-math.cos(FAN_TILT), 0.0, math.sin(FAN_TILT)))    # exhaust direction
+A_UP = -A_DN                                                       # upstream, into the duct
+V_UP = Vector((math.sin(FAN_TILT), 0.0, math.cos(FAN_TILT)))      # 'up' in the fan disc plane
+BH_T = -0.045                                    # fan bulkhead rear face along A_UP from the rotor centre
+BH_V = (-0.150, 0.165)                           # bulkhead extent along V_UP (bottom, top)
 FAN_Y = (-0.452, -0.145, 0.145, 0.452)          # Fan_0 .. Fan_3 (right -> left)
 FAN_TIP_R = 0.1245
 SHROUD_R = (0.1265, 0.1315)
@@ -182,10 +185,23 @@ def lathe(P, prof, origin, axis, segs, mats, ref=None, closed=False, phase=0.0):
     bm = P.bm
     o, w = Vector(origin), Vector(axis).normalized()
     u, v = perp(w, ref)
+    nseg0 = len(prof) if closed else len(prof) - 1
+    if isinstance(mats, int):
+        mats = [mats] * nseg0
+    # drop zero-length profile segments (keeps the material of the segment that follows)
+    p2, m2 = [prof[0]], []
+    for i in range(1, len(prof)):
+        if abs(prof[i][0] - p2[-1][0]) < 1e-7 and abs(prof[i][1] - p2[-1][1]) < 1e-7:
+            continue
+        m2.append(mats[i - 1])
+        p2.append(prof[i])
+    if closed:
+        m2.append(mats[nseg0 - 1])
+        if abs(p2[-1][0] - p2[0][0]) < 1e-7 and abs(p2[-1][1] - p2[0][1]) < 1e-7:
+            p2.pop(); m2.pop(-2)
+    prof, mats = p2, m2
     n = len(prof)
     nseg = n if closed else n - 1
-    if isinstance(mats, int):
-        mats = [mats] * nseg
     cs = [(math.cos(phase + TAU * k / segs), math.sin(phase + TAU * k / segs)) for k in range(segs)]
     rings = []
     for (r, t) in prof:
@@ -242,7 +258,7 @@ def hexnut(P, origin, axis, af, t0, t1, mat, bore=0.0, ref=None):
     return lathe(P, prof, origin, axis, 6, mat, ref=ref, phase=math.pi / 6)
 
 
-def rbox(P, center, size, r, mat, rot=None, n=2):
+def rbox(P, center, size, r, mat, rot=None, n=1):
     """Box with rounded edges (radius r, n segments per 45 deg). size = full extents. Box-projected UVs."""
     h = [size[0] / 2.0, size[1] / 2.0, size[2] / 2.0]
     r = max(0.0, min(r, 0.95 * min(h)))
@@ -325,7 +341,8 @@ def fillet(pts, radius, seg90=6):
 
 def tube(P, pts, r, mat, segs=14, bend=None, caps=True):
     """Swept circular tube along a polyline (corners filleted with `bend`, default 3 r). Returns (pts, tangents)."""
-    pts = fillet(pts, bend if bend is not None else 3.0 * r)
+    segs = min(segs, 12)
+    pts = fillet(pts, bend if bend is not None else 3.0 * r, seg90=4)
     clean = [pts[0]]
     for p in pts[1:]:
         if (p - clean[-1]).length > 1e-5:
@@ -438,28 +455,17 @@ def curve_normals_2d(pts, up):
     return out
 
 
-def fillet2d(poly, r, seg=4, closed=True):
-    """Round the corners of a 2D polygon [(a, b), ...] (convex or not) with radius r."""
-    P3 = [Vector((a, b, 0.0)) for (a, b) in poly]
-    if closed:
-        P3 = P3 + [P3[0], P3[1]]
-        f = fillet(P3, r, seg90=seg)
-        # drop the duplicated start segment (between the first point and the first arc)
-        res = []
-        for p in f:
-            if not res or (p - res[-1]).length > 1e-6:
-                res.append(p)
-        # the list now starts at poly[0] (unrounded) and ends at poly[1]; cut the wrap-around
-        start = 1
-        while start < len(res) and (res[start] - res[0]).length < 1e-6:
-            start += 1
-        # find the arc that rounds poly[0] at the end of the list and remove the trailing segment to poly[1]
-        res = res[:-1]
-        # the first point is the unrounded poly[0]; it is replaced by the arc at the end of the list
-        res = res[1:]
-        return [(p.x, p.y) for p in res]
-    f = fillet(P3, r, seg90=seg)
-    return [(p.x, p.y) for p in f]
+def fillet2d(poly, r, seg=4):
+    """Round every corner of a closed 2D polygon [(a, b), ...] with radius r."""
+    out = []
+    n = len(poly)
+    for i in range(n):
+        p0 = Vector((poly[i - 1][0], poly[i - 1][1], 0.0))
+        p1 = Vector((poly[i][0], poly[i][1], 0.0))
+        p2 = Vector((poly[(i + 1) % n][0], poly[(i + 1) % n][1], 0.0))
+        for p in fillet([p0, p1, p2], r, seg90=seg)[1:-1]:
+            out.append((p.x, p.y))
+    return out
 
 
 def offset_poly(poly, d):
@@ -538,7 +544,7 @@ def bell_points(rt, re, t_throat, t_exit, th_n=math.radians(28), th_e=math.radia
 
 
 def cd_nozzle_profile(rt, re, L, r_bore, r_body, r_flange, t_throat, lip=0.0045, wall=0.0045, flange_t=0.008,
-                      throat_jacket=None):
+                      throat_jacket=None, nb=10):
     """Closed (r, t) profile of a converging-diverging nozzle, t = 0 at the inlet flange face, t = L at the exit.
     Returns (profile, materials-per-segment-key list) with keys 'in' (lined bore) / 'out' (shell)."""
     prof, keys = [], []
@@ -550,17 +556,17 @@ def cd_nozzle_profile(rt, re, L, r_bore, r_body, r_flange, t_throat, lip=0.0045,
     add((r_bore, 0.0), 'out')
     add((r_bore, 0.35 * t_throat), 'in')
     tc = t_throat - 0.55 * t_throat
-    for k in range(1, 5):                                  # 40 deg convergent with a rounded throat
-        f = k / 4.0
+    for k in range(1, 4):                                  # 40 deg convergent with a rounded throat
+        f = k / 3.0
         r = r_bore + (rt - r_bore) * (1 - (1 - f) ** 2.2)
         add((r, 0.35 * t_throat + (t_throat - 0.35 * t_throat) * f), 'in')
-    for p in bell_points(rt, re, t_throat, L, n=12):
+    for p in bell_points(rt, re, t_throat, L, n=nb):
         add(p, 'in')
     # lip (rounded) and outer shell back to the flange
     add((re + 0.35 * lip, L + 0.0012), 'lip')
     add((re + 0.75 * lip, L + 0.0012), 'lip')
     add((re + lip, L - 0.0005), 'out')
-    bell = bell_points(rt, re, t_throat, L, n=12)
+    bell = bell_points(rt, re, t_throat, L, n=nb)
     jacket = throat_jacket if throat_jacket else rt + 2.4 * wall
     for (r, t) in reversed(bell[2:-1]):
         add((max(r + wall, jacket if t < t_throat + 0.25 * (L - t_throat) else r + wall), t), 'out')
@@ -587,8 +593,9 @@ def p_clip(P, at, tangent, r_tube, out_dir, mats, reach=0.022):
     t = Vector(tangent).normalized()
     od = Vector(out_dir)
     od = (od - t * od.dot(t)).normalized()
-    ring(P, at, t, r_tube + 0.0004, r_tube + 0.0030, -0.008, 0.008, mats['rubber'], segs=16)
-    ring(P, at, t, r_tube + 0.0030, r_tube + 0.0048, -0.0065, 0.0065, mats['band'], segs=16, ch=0.0005)
+    lathe(P, [(r_tube + 0.0004, -0.0075), (r_tube + 0.0030, -0.0075), (r_tube + 0.0030, -0.0065), (r_tube + 0.0048, -0.0065),
+              (r_tube + 0.0048, 0.0065), (r_tube + 0.0030, 0.0065), (r_tube + 0.0030, 0.0075), (r_tube + 0.0004, 0.0075)],
+          at, t, 12, [mats['rubber'], mats['rubber'], mats['band'], mats['band'], mats['band'], mats['rubber'], mats['rubber'], mats['rubber']], closed=True)
     side = t.cross(od).normalized()
     rot = Matrix((od, side, t)).transposed().to_4x4()        # local x = out, y = side, z = tube axis
     tab_c = Vector(at) + od * (r_tube + 0.003 + reach / 2)
@@ -617,8 +624,8 @@ def fan_rotor(M, name, center):
     Rh = 0.062
     domec = 0.022                     # dome sphere centre t
     prof = [(0.0, -0.040), (0.054, -0.040), (0.058, -0.037), (Rh, -0.033), (Rh, domec)]
-    for k in range(1, 9):             # dome: sphere of radius Rh up to the cone seat
-        a = math.radians(90.0 * k / 9.0) * 0.62
+    for k in range(1, 7):             # dome: sphere of radius Rh up to the cone seat
+        a = math.radians(90.0 * k / 7.0) * 0.62
         prof.append((Rh * math.cos(a), domec + Rh * math.sin(a)))
     rseat = prof[-1][0]
     tseat = prof[-1][1]
@@ -632,10 +639,10 @@ def fan_rotor(M, name, center):
     mats = []
     for i in range(len(prof) - 1):
         mats.append(TIP if prof[i][1] >= tt - 0.0005 and prof[i + 1][1] >= tt - 0.011 and i >= len(prof) - 6 else HUB)
-    lathe(P, prof, o, ax, 48, mats)
+    lathe(P, prof, o, ax, 36, mats)
 
     # blades: wrapped on cylinders; chord pitch from 38 deg (root) to 21 deg (tip), scimitar sweep
-    nb, ns, nc = 7, 9, 9
+    nb, ns, nc = 7, 8, 9
     r0, r1 = Rh - 0.004, FAN_TIP_R
     for b in range(nb):
         th0 = TAU * b / nb
@@ -668,6 +675,7 @@ def fan_rotor(M, name, center):
         loft(P, secs, BLD, caps=(True, True))
     ob = P.finish(smooth_angle=55.0)
     ob.location = Vector(center)
+    ob.rotation_euler = (0.0, FAN_TILT, 0.0)    # mesh spins about its local X; pitch is carried by the object
     return ob
 
 
@@ -686,7 +694,7 @@ def lip_z(y):
 
 def ramp_z(x):
     """Duct ceiling centre-plane: flat over the fans, sweeping down to the underfloor at x -1.45."""
-    if x <= -1.83:
+    if x <= -1.84:
         return DUCT_CEIL_Z
     return 0.128 + (DUCT_CEIL_Z - 0.128) * smoothstep(-1.45, -1.83, x)
 
@@ -735,20 +743,28 @@ def fan_box(M):
             (NOZ_Y[2] + 0.050, NOZ_Y[3] - 0.050), (NOZ_Y[3] + 0.050, BOX_IN_HW)]
     for (a, b) in ribs:
         rbox(P, Vector((SHELF_X - 0.005, (a + b) / 2, NOZ_Z)), (0.010, b - a, 0.009), 0.0035, CF)
-    # bay ceiling: sloped plate from the rear lip to the fan bulkhead, bullnose lip
+    # fan bulkhead plane (perpendicular to the tilted fan axes): rear face at t = BH_T along A_UP
+    Pb = Vector((FAN_X, 0.0, FAN_Z)) + A_UP * BH_T
+    Bk = Pb + V_UP * BH_V[0]            # bottom edge (rear face)
+    Tp = Pb + V_UP * BH_V[1]            # top edge (rear face)
+
+    def x_bulk(z):
+        return Pb.x + math.tan(FAN_TILT) * (z - Pb.z)
+
+    # bay ceiling: plate from the bullnose rear lip rising to the bulkhead top edge (outlet converges)
     sec = [(-2.1255, SHELF_LIP_Z[0] + 0.004), (-2.1272, SHELF_LIP_Z[0] + 0.0075), (-2.1255, SHELF_LIP_Z[1] - 0.002),
-           (-2.121, SHELF_LIP_Z[1]), (SHELF_X + 0.002, SHELF_LIP_Z[1]), (FANPLATE_X[0], CEIL_FAN_Z + 0.007),
-           (FANPLATE_X[0], CEIL_FAN_Z), (-2.121, SHELF_LIP_Z[0])]
+           (-2.121, SHELF_LIP_Z[1]), (SHELF_X + 0.002, SHELF_LIP_Z[1]), (Tp.x + 0.006, Tp.z + 0.007),
+           (Tp.x + 0.004, Tp.z - 0.002), (-2.121, SHELF_LIP_Z[0])]
     ys = [-BOX_IN_HW - 0.004, BOX_IN_HW + 0.004]
     loft(P, [[Vector((x, y, z)) for (x, z) in sec] for y in ys], CF)
 
-    # ---- 4. lower apron (solid) with the bullnose lip, rising at the outer bays
+    # ---- 4. lower apron (solid) with the bullnose lip, rising at the outer bays; front face closes the duct
     yss = [-BOX_IN_HW - 0.004, -0.55, -0.50, -0.45, -0.40, 0.40, 0.45, 0.50, 0.55, BOX_IN_HW + 0.004]
     apr = []
     for y in yss:
         zl = lip_z(y)
         sec = [(-2.125, BOX_BOT + 0.012), (-2.125, zl - 0.010), (-2.1235, zl - 0.0035), (-2.119, zl),
-               (-2.110, zl + 0.0005), (FANPLATE_X[0], FLOOR_FAN_Z), (FANPLATE_X[0], BOX_BOT + 0.012)]
+               (-2.110, zl + 0.0005), (Bk.x + 0.003, Bk.z - 0.002), (Bk.x + 0.003, BOX_BOT + 0.012)]
         apr.append([Vector((x, y, z)) for (x, z) in sec])
     loft(P, apr, CF)
     # recessed fastener heads on the apron (3, under the strakes)
@@ -756,88 +772,74 @@ def fan_box(M):
         lathe(P, [(0, 0.0), (0.0085, 0.0), (0.0095, -0.0012), (0.0095, -0.0025), (0, -0.0025)],
               Vector((-2.125, y, BOX_BOT + 0.036)), X, 16, BK)
 
-    # ---- 5. strakes (thin, filleted into the ceiling and the floor, rounded trailing edge)
+    # ---- 5. strakes: thin vanes from the rear opening to the tilted bulkhead, flared into ceiling and floor
     def ceil_z(x):
-        f = (x - (-2.121)) / (FANPLATE_X[0] - (-2.121))
-        return SHELF_LIP_Z[0] + (CEIL_FAN_Z - SHELF_LIP_Z[0]) * max(0.0, min(1.0, f))
+        f = (x - (-2.121)) / (Tp.x - (-2.121))
+        return SHELF_LIP_Z[0] + (Tp.z - SHELF_LIP_Z[0]) * max(0.0, min(1.0, f))
 
     def floor_z(x, y):
-        f = (x - (-2.110)) / (FANPLATE_X[0] - (-2.110))
-        return lip_z(y) + (FLOOR_FAN_Z - lip_z(y)) * max(0.0, min(1.0, f))
+        f = (x - (-2.110)) / (Bk.x - (-2.110))
+        return lip_z(y) + (Bk.z - lip_z(y)) * max(0.0, min(1.0, f))
 
+    x_rear = -2.1155
     for ys_ in STRAKE_Y:
-        stations = [(-2.1185, 0.0012), (-2.1175, 0.0026), (-2.1155, 0.0040), (-2.100, 0.0040), (-2.080, 0.0040),
-                    (FANPLATE_X[0] + 0.002, 0.0040)]
         secs = []
-        for (x, hw) in stations:
-            zt, zbm = ceil_z(x) + 0.004, floor_z(x, ys_) - 0.004
-            fr = 0.018 * hw / 0.004
-            pts = []
-            # right side bottom->top, then left side top->bottom
-            for k in range(5):
-                a = math.pi / 2 * k / 4
-                pts.append(Vector((x, ys_ + hw + 0.006 * hw / 0.004 * (1 - math.sin(a)), zbm + 0.006 * hw / 0.004 * (1 - math.cos(a)) * 0 + 0.006 * (1 - math.cos(a)) * hw / 0.004 * 0 + (0.006 * hw / 0.004) * (1 - math.cos(a)) * 0)))
-            pts = []
-            nb_ = 4
-            for k in range(nb_ + 1):         # bottom fillet (r 0.006)
-                a = math.pi / 2 * k / nb_
-                rr = 0.006 * hw / 0.004
-                pts.append(Vector((x, ys_ + hw + rr * (1 - math.sin(a)), zbm + rr * (1 - math.cos(a)) * 0 + rr * (1 - math.cos(a)) if False else zbm + rr - rr * math.cos(math.pi / 2 - a) * 0 + 0)))
-            pts = []
-            rb, rt = 0.006, fr
-            for k in range(nb_ + 1):
-                a = math.pi / 2 * k / nb_
-                pts.append(Vector((x, ys_ + hw + rb * (1 - math.sin(a)), zbm + rb * (1 - math.cos(a)))))
-            for k in range(nb_ + 1):
-                a = math.pi / 2 * k / nb_
-                pts.append(Vector((x, ys_ + hw + rt * (1 - math.cos(a)), zt - rt + rt * math.sin(a))))
-            left = [Vector((p.x, 2 * ys_ - p.y, p.z)) for p in reversed(pts)]
-            secs.append(pts + left)
+        for sv in (0.0, 0.03, 0.07, 0.13, 0.50, 0.80, 0.88, 0.94, 0.98, 1.0):
+            hw = 0.0040 + 0.0060 * max(0.0, 1 - sv / 0.13) ** 2 + 0.0160 * max(0.0, (sv - 0.80) / 0.20) ** 2
+            zf = lambda x: floor_z(x, ys_) - 0.004 + sv * (ceil_z(x) + 0.008 - floor_z(x, ys_))
+            xf = -2.0
+            for _ in range(8):
+                xf = x_bulk(zf(xf)) + 0.006
+            xs_ = [xf, 0.5 * (xf + x_rear), x_rear]
+            pts = [Vector((x, ys_ - hw, zf(x))) for x in xs_]
+            for k in range(1, 6):
+                a = math.pi * k / 6
+                x = x_rear - hw * math.sin(a)
+                pts.append(Vector((x, ys_ - hw * math.cos(a), zf(x))))
+            pts += [Vector((x, ys_ + hw, zf(x))) for x in reversed(xs_)]
+            secs.append(pts)
         loft(P, secs, CF)
 
-    # ---- 6. fan bulkhead with 4 shroud openings
+    # ---- 6. fan bulkhead (tilted) with 4 shroud openings
     cuts = [-BOX_IN_HW - 0.004, -0.295, 0.0, 0.295, BOX_IN_HW + 0.004]
     for i, yc in enumerate(FAN_Y):
-        holed_cell(P, Vector((FANPLATE_X[0], 0, 0)), Y, Z, X, cuts[i], cuts[i + 1], FLOOR_FAN_Z - 0.006,
-                   DUCT_CEIL_Z + 0.001, (yc, FAN_Z), SHROUD_R[1] + 0.001, FANPLATE_X[1] - FANPLATE_X[0], CF, segs=48)
+        holed_cell(P, Pb, Y, V_UP, A_UP, cuts[i], cuts[i + 1], BH_V[0], BH_V[1], (yc, 0.0), SHROUD_R[1] + 0.001, 0.010, CF, segs=32)
 
-    # ---- 7. shrouds, stator vanes, motors
+    # ---- 7. shrouds, stator vanes, motors (all on the tilted fan axes)
     for yc in FAN_Y:
-        c = Vector((0.0, yc, FAN_Z))
-        sh = [(SHROUD_R[0], -1.905), (SHROUD_R[0], -2.043), (SHROUD_R[0] + 0.003, -2.0505), (SHROUD_R[1] + 0.0065, -2.0525),
-              (SHROUD_R[1] + 0.0065, -2.0495), (SHROUD_R[1], -2.047), (SHROUD_R[1], -1.912), (SHROUD_R[1] - 0.002, -1.905)]
-        lathe(P, [(r, x) for (r, x) in sh], c, X, 64, CF, closed=True)
+        c = Vector((FAN_X, yc, FAN_Z))
+        sh = [(SHROUD_R[0], 0.090), (SHROUD_R[0], -0.038), (SHROUD_R[0] + 0.003, -0.0455), (SHROUD_R[1] + 0.0065, -0.0475),
+              (SHROUD_R[1] + 0.0065, -0.0445), (SHROUD_R[1], -0.042), (SHROUD_R[1], 0.083), (SHROUD_R[1] - 0.002, 0.090)]
+        lathe(P, sh, c, A_UP, 40, CF, closed=True, ref=Y)
         # stator vanes (9) between the motor nose and the shroud, de-swirl camber
         for k in range(9):
             th0 = TAU * (k + 0.5) / 9
             secs = []
             for rr in (0.050, 0.090, SHROUD_R[0] + 0.002):
                 pts = []
-                for (dx, da) in ((0.014, 0.0), (0.004, 0.0040), (-0.012, 0.0028), (-0.016, 0.0), (-0.012, -0.0010), (0.004, 0.0012)):
-                    xx = -1.931 + dx
-                    th = th0 + (da + 0.010 * (0.014 - dx) / 0.03) / rr * 0.6
-                    pts.append(Vector((xx, yc + rr * math.cos(th), FAN_Z + rr * math.sin(th))))
+                for (dt, da) in ((-0.014, 0.0), (-0.004, 0.0040), (0.012, 0.0028), (0.016, 0.0), (0.012, -0.0010), (-0.004, 0.0012)):
+                    th = th0 + (da + 0.010 * (0.014 + dt) / 0.03) / rr * 0.6
+                    pts.append(c + A_UP * (0.066 + dt) + (Y * math.cos(th) + V_UP * math.sin(th)) * rr)
                 secs.append(pts)
             loft(P, secs, TI)
         # motor (heat-pump-compressor-derived PMSM): finned aluminium can, black end caps, connector, cable
-        mp = [(0.0, -1.951), (0.046, -1.951), (0.054, -1.948), (0.056, -1.942)]
-        xx = -1.935
-        while xx > -1.795:
-            mp += [(0.056, xx), (0.0605, xx - 0.002), (0.0605, xx - 0.006), (0.056, xx - 0.008)]
-            xx -= 0.012
-        mp += [(0.056, -1.790), (0.054, -1.778), (0.040, -1.770), (0.022, -1.768), (0.0, -1.768)]
-        mats = []
-        for i in range(len(mp) - 1):
-            mats.append(BK if (mp[i][1] > -1.944 or mp[i][1] < -1.789) else AL)
-        lathe(P, [(r, x) for (r, x) in mp], c, X, 36, mats)
-        cb = c + Vector((-1.775, 0, 0.040))
-        rbox(P, cb, (0.030, 0.034, 0.018), 0.003, BK)
-        connector(P, cb + Vector((0.0, 0.0, 0.009)), Z, {'metal': AL, 'plug': BK}, r=0.007, L=0.016)
-        tube(P, [cb + Vector((0, 0, 0.024)), cb + Vector((0.03, 0, 0.060)), Vector((-1.80, yc, DUCT_CEIL_Z - 0.006))],
+        mp = [(0.0, 0.044), (0.046, 0.044), (0.054, 0.047), (0.056, 0.053)]
+        tt = 0.060
+        while tt < 0.200:
+            mp += [(0.056, tt), (0.0605, tt + 0.003), (0.0605, tt + 0.016), (0.056, tt + 0.019)]
+            tt += 0.028
+        mp += [(0.056, 0.205), (0.054, 0.217), (0.040, 0.225), (0.022, 0.227), (0.0, 0.227)]
+        mats = [BK if (mp[i][1] < 0.051 or mp[i][1] > 0.204) else AL for i in range(len(mp) - 1)]
+        lathe(P, mp, c, A_UP, 22, mats, ref=Y)
+        cb = c + A_UP * 0.200 + V_UP * 0.068
+        rot = Matrix((A_UP, Y, V_UP)).transposed().to_4x4()
+        rbox(P, cb, (0.034, 0.034, 0.020), 0.003, BK, rot=rot)
+        connector(P, cb + V_UP * 0.010, V_UP, {'metal': AL, 'plug': BK}, r=0.007, L=0.016)
+        tube(P, [cb + V_UP * 0.026, cb + V_UP * 0.060 + A_UP * 0.02, Vector((-1.75, yc, ramp_z(-1.75) - 0.008))],
              0.0045, RU, segs=10, bend=0.02)
 
     # ---- 8. duct: ceiling ramp, side walls, compartment front wall, inlet grille
-    xs = [FANPLATE_X[1] - 0.002] + [(-1.84 + (-1.45 + 1.84) * k / 14) for k in range(15)]
+    xs = [Tp.x + 0.004] + [(-1.84 + (-1.45 + 1.84) * k / 14) for k in range(15)]
     xs = sorted(set(round(v, 5) for v in xs))
     cvr = [Vector((x, 0.0, ramp_z(x))) for x in xs]
     nr = curve_normals_2d(cvr, Vector((0, -1, 0)))
@@ -911,9 +913,9 @@ def rear_thrusters(M):
     for y in NOZ_Y:
         o = Vector((x_in, y, NOZ_Z))
         prof, keys = cd_nozzle_profile(NOZ_RT, NOZ_RE, NOZ_L, r_bore=0.0185, r_body=0.030, r_flange=0.046,
-                                       t_throat=0.045, lip=0.0050, wall=0.0050, throat_jacket=0.026)
+                                       t_throat=0.045, lip=0.0050, wall=0.0050, throat_jacket=0.026, nb=8)
         mats = [{'in': AU, 'out': TI, 'lip': TI}[keys[(i + 1) % len(keys)]] for i in range(len(prof))]
-        lathe(P, prof, o, ax, 48, mats, closed=True)
+        lathe(P, prof, o, ax, 40, mats, closed=True)
         # flange bolts (6) on the exit side of the inlet flange
         for k in range(6):
             a = TAU * (k + 0.5) / 6
@@ -928,7 +930,7 @@ def rear_thrusters(M):
             hexnut(P, ec + ax * 0.0037 + Y * sgn * 0.004, ax, 0.010, 0.0, 0.006, AL)
         # fast-acting electrically actuated valve: body block + flange + actuator + connector
         vb = Vector((x_in + 0.042, y, NOZ_Z))
-        rbox(P, vb, (0.084, 0.060, 0.058), 0.006, BK)
+        rbox(P, vb, (0.084, 0.060, 0.058), 0.006, BK, n=2)
         ring(P, o + X * 0.0005, X, 0.0, 0.040, 0.0, 0.004, BK, segs=32, ch=0.001) if False else \
             cyl(P, o, X, 0.040, 0.0005, 0.0055, BK, segs=32, ch=0.001)
         act = vb + Vector((0.006, 0, 0.029))
@@ -987,7 +989,7 @@ def lift_stack(P, x, y, z_exit, z_ring0, z_ring1, z_collar, z_valve0, z_valve1, 
     add(0.0085, t_th + 0.012, AU)
     add(LIFT_RT + 0.0015, t_th + 0.003, AU)
     add(LIFT_RT, t_th, AU)
-    for (r, t) in bell_points(LIFT_RT, LIFT_RE, 0.0, t_th, th_n=math.radians(26), th_e=math.radians(10), n=10):
+    for (r, t) in bell_points(LIFT_RT, LIFT_RE, 0.0, t_th, th_n=math.radians(26), th_e=math.radians(10), n=7):
         add(r, t_th - t, AU)       # mirrored: t = 0 at the exit
     prof[-1] = (LIFT_RE, 0.0)
     add(LIFT_RE + 0.0016, -0.0010, TI)
@@ -999,16 +1001,14 @@ def lift_stack(P, x, y, z_exit, z_ring0, z_ring1, z_collar, z_valve0, z_valve1, 
     add(0.0300, Ln - 0.004, TI)
     add(0.0330, Ln, CR)
     # stacked valve body: alternating chrome / brass rings with grooves
-    nring = 5
+    nring = 4
     h = (z_ring1 - z_ring0) / nring
     for k in range(nring):
         t0 = Ln + k * h
         m = CR if k % 2 == 0 else AU
         rr = 0.0385 if k % 2 == 0 else 0.0365
-        add(rr - 0.0015, t0 + 0.0015, m)
-        add(rr, t0 + 0.003, m)
-        add(rr, t0 + h - 0.003, m)
-        add(rr - 0.0015, t0 + h - 0.0012, m)
+        add(rr, t0 + 0.0025, m)
+        add(rr, t0 + h - 0.0025, m)
         add(0.0325, t0 + h, CR)
     tz = z_ring1 - z_exit
     add(0.016, tz + 0.002, SS)
@@ -1033,7 +1033,7 @@ def lift_stack(P, x, y, z_exit, z_ring0, z_ring1, z_collar, z_valve0, z_valve1, 
     add(0.0, tv1, AL)
     # the profile runs from the inner pole down through the bell then up the outside: reverse to go outer-first
     mlist = km[1:] + [km[-1]]
-    lathe(P, prof, o, up, 40, [km[i + 1] for i in range(len(prof) - 1)])
+    lathe(P, prof, o, up, 24, [km[i + 1] for i in range(len(prof) - 1)])
     # EM valve connector + cable, feed inlet on top
     zc = (z_valve0 + z_valve1) / 2
     connector(P, Vector((x + 0.034, y, zc)), Vector((1, 0, 0)), {'metal': AL, 'plug': BK}, r=0.0075, L=0.017)
@@ -1047,8 +1047,8 @@ def yaw_thruster(P, s, mats):
     L = 0.100
     o = Vector((YAW['x'], s * (YAW['y_exit'] - L), YAW['z']))
     prof, keys = cd_nozzle_profile(YAW_RT, YAW_RE, L, r_bore=0.0095, r_body=0.0165, r_flange=0.026,
-                                   t_throat=0.040, lip=0.0035, wall=0.0030, throat_jacket=0.0125, flange_t=0.006)
-    lathe(P, prof, o, ax, 32, [{'in': AU, 'out': TI, 'lip': TI}[keys[(i + 1) % len(keys)]] for i in range(len(prof))], closed=True)
+                                   t_throat=0.040, lip=0.0035, wall=0.0030, throat_jacket=0.0125, flange_t=0.006, nb=5)
+    lathe(P, prof, o, ax, 20, [{'in': AU, 'out': TI, 'lip': TI}[keys[(i + 1) % len(keys)]] for i in range(len(prof))], closed=True)
     # flush bezel in the body side (aligned with the local body facet)
     nrm = Vector((0, s, 0))
     try:
@@ -1115,7 +1115,7 @@ def rocket_thrusters(M):
         pts = [tee - Vector((0, 0, 0.017)), Vector((-1.62, s * 0.560, 0.270)), Vector((-0.90, s * 0.560, 0.270)),
                Vector((-0.86, sill_y, sill_z)), Vector((0.880, sill_y, sill_z))]
         tube(P, pts, R_LINE, SS, segs=16, bend=0.05)
-        for xc in (-0.70, -0.30, 0.10, 0.50):
+        for xc in (-0.55, 0.0, 0.55):
             p_clip(P, Vector((xc, sill_y, sill_z)), Vector((1, 0, 0)), R_LINE, Vector((0, s * 0.3, -1)), fm)
         for xc in (-1.30,):
             p_clip(P, Vector((xc, s * 0.560, 0.270)), Vector((1, 0, 0)), R_LINE, Vector((0, 0, -1)), fm)
@@ -1129,7 +1129,7 @@ def rocket_thrusters(M):
         yb = [tee2 + Vector((0, 0, -0.017)), Vector((0.880, sill_y, 0.128)), Vector((0.900, s * 0.470, 0.128)),
               Vector((1.880, s * 0.470, 0.128)), Vector((1.930, s * 0.600, YAW['z'])), yin]
         tube(P, yb, R_SMALL, SS, segs=14, bend=0.04)
-        for xc in (1.10, 1.45, 1.80):
+        for xc in (1.20, 1.70):
             p_clip(P, Vector((xc, s * 0.470, 0.128)), Vector((1, 0, 0)), R_SMALL, Vector((0, 0, 1)), fm)
         # EM valve harness stubs
         tube(P, [Vector((rx + 0.051, ry, 0.6925)), Vector((rx + 0.080, ry, 0.700)), Vector((rx + 0.10, ry - s * 0.06, 0.75))], 0.0030, RU, segs=8, bend=0.02)
@@ -1146,7 +1146,7 @@ def copv_vessel(P, c, axis, r_in, wall, L_in, boss_r, mats, segs=72, ref=None):
     hc = L_in / 2 - r_in                     # half cylinder length (liner dome centres at +-hc)
     hoop = 0.0028
     prof = []
-    n_d = 16
+    n_d = 10
     # left dome from the pole opening to the equator (outer surface incl. polar build-up)
     for k in range(n_d + 1):
         a = math.radians(90.0) * (1 - k / n_d)          # 90 (pole) -> 0 (equator)
@@ -1158,7 +1158,7 @@ def copv_vessel(P, c, axis, r_in, wall, L_in, boss_r, mats, segs=72, ref=None):
     pole_t = prof[0][1]
     # hoop band with drop-offs
     prof += [(r_out, -hc + 0.030), (r_out + hoop, -hc + 0.045)]
-    nb = 6
+    nb = 3
     for k in range(1, nb):
         prof.append((r_out + hoop, -hc + 0.045 + (2 * hc - 0.09) * k / nb))
     prof += [(r_out + hoop, hc - 0.045), (r_out, hc - 0.030)]
@@ -1185,7 +1185,7 @@ def copv_vessel(P, c, axis, r_in, wall, L_in, boss_r, mats, segs=72, ref=None):
             bp += [(boss_r, tt), (boss_r - 0.0025, tt + 0.003), (boss_r, tt + 0.006)]
             tt += 0.006
         bp += [(boss_r, tt + 0.010), (boss_r - 0.003, tt + 0.013), (0.0, tt + 0.013)]
-        lathe(P, bp, c, a2, 40, AL)
+        lathe(P, bp, c, a2, 32, AL)
         ends.append(c + a2 * (tt + 0.013))
     return ends, r_out + hoop, hc
 
@@ -1193,8 +1193,9 @@ def copv_vessel(P, c, axis, r_in, wall, L_in, boss_r, mats, segs=72, ref=None):
 def strap(P, c, axis, r, at, mats, foot_dir, width=0.050, foot_drop=0.06, ref=None):
     """Steel strap with rubber liner around a vessel (axis), clamp tabs on top, feet bolted below."""
     ax = Vector(axis).normalized()
-    ring(P, c + ax * at, ax, r + 0.0005, r + 0.0045, -width / 2 - 0.003, width / 2 + 0.003, mats['ru'], segs=72)
-    ring(P, c + ax * at, ax, r + 0.0045, r + 0.0080, -width / 2, width / 2, mats['band'], segs=72, ch=0.0012)
+    lathe(P, [(r + 0.0005, -width / 2 - 0.003), (r + 0.0045, -width / 2 - 0.003), (r + 0.0045, -width / 2), (r + 0.0080, -width / 2 + 0.0012),
+              (r + 0.0080, width / 2 - 0.0012), (r + 0.0045, width / 2), (r + 0.0045, width / 2 + 0.003), (r + 0.0005, width / 2 + 0.003)],
+          c + ax * at, ax, 48, [mats['ru'], mats['band'], mats['band'], mats['band'], mats['band'], mats['ru'], mats['ru'], mats['ru']], closed=True)
     fd = Vector(foot_dir).normalized()
     up = -fd
     side = ax.cross(up).normalized()
@@ -1281,7 +1282,7 @@ def copv_rocket(M):
                 bolt=P.m("Stainless"), ss=P.m("Stainless"), au=P.m("Gold"), bracket=P.m("Aluminum"))
     d = COPV_R
     X = Vector((1, 0, 0))
-    ends, r_o, hc = copv_vessel(P, d['c'], X, d['r_in'], d['wall'], d['L_in'], d['boss_r'], mats, segs=80)
+    ends, r_o, hc = copv_vessel(P, d['c'], X, d['r_in'], d['wall'], d['L_in'], d['boss_r'], mats, segs=56)
     for at in (-0.36, 0.40):
         strap(P, d['c'], X, r_o, at, mats, foot_dir=Vector((0, 0, -1)), foot_drop=-0.12)
         saddle(P, d['c'], X, r_o, at, mats, Vector((0, 0, -1)), 0.176)
@@ -1311,7 +1312,7 @@ def copv_trunk(M):
                 bolt=P.m("Stainless"), ss=P.m("Stainless"), au=P.m("Gold"), bracket=P.m("Aluminum"))
     d = COPV_T
     Y = Vector((0, 1, 0))
-    ends, r_o, hc = copv_vessel(P, d['c'], Y, d['r_in'], d['wall'], d['L_in'], d['boss_r'], mats, segs=72, ref=Vector((1, 0, 0)))
+    ends, r_o, hc = copv_vessel(P, d['c'], Y, d['r_in'], d['wall'], d['L_in'], d['boss_r'], mats, segs=56, ref=Vector((1, 0, 0)))
     floor = 0.330
     # crossmember (rear subframe) under the vessel
     tube(P, [Vector((d['c'].x, -0.615, floor - 0.022)), Vector((d['c'].x, 0.615, floor - 0.022))], 0.022, mats['al'], segs=20, bend=0.0)

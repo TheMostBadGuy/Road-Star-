@@ -113,6 +113,17 @@ static void Design()
 			std::printf("  %3.0f K: %4.1f/%4.1f s", T0, a.ExitVelocity / kG0, v.ExitVelocity / kG0);
 		}
 		std::printf("\n  Ideal infinite-expansion limit at 293 K: sqrt(2 cp T)/g0 = %.1f s\n", std::sqrt(2 * 1039.0 * 293.15) / kG0);
+		// loss-free vacuum Isp straight from the real-gas isentrope table, for comparison with Sutton & Biblarz Table 7-3
+		const IsentropeTable& tab = IsentropeTable::Get();
+		const IsentropeTable::Cell c = tab.Locate(150e5, 293.15);
+		const double sRT = std::sqrt(kR * c.T0), Cs = tab.Cstar(c);
+		std::printf("  Loss-free vacuum Isp, 150 bar / 293 K stagnation:");
+		for (int k : { 6, 8, 10, 12, 14 })
+		{
+			double pr, vr, tr; tab.Sample(c, k, pr, vr, tr);
+			std::printf("  eps %4.0f: %4.1f s", IsentropeTable::kEps[k], sRT * (vr + pr * IsentropeTable::kEps[k] / Cs) / kG0);
+		}
+		std::printf("   (Sutton: N2 80 s theoretical, 73 s measured)\n");
 	}
 	// vessels
 	System th(Config::Thrust()), rc(rk);
@@ -124,7 +135,7 @@ static void Design()
 struct BurstResult
 {
 	double tDropout = -1, t90 = -1, t10 = -1, impulse = 0, massUsed = 0, plateauN = 0, minTankT = 1e9, minLinerT = 1e9, minPlumeT = 1e9;
-	double endP = 0, endT = 0, massErr = 0, energyErr = 0, frameMass = 0, frameImpulse = 0, usPerStep = 0;
+	double endP = 0, endT = 0, massErr = 0, energyErr = 0, energyScale = 1, frameMass = 0, frameImpulse = 0, usPerStep = 0;
 };
 
 static void PrintRow(const System& s, double t)
@@ -144,7 +155,7 @@ static BurstResult RearBurst(const Config& cfg, double fillBar, const char* labe
 	System s(cfg);
 	s.Fill(fillBar, 293.15);
 	s.SetArmed(true);
-	for (int k = 0; k < 1000; ++k) s.Step(kDt);   // arm: isolation valves travel, dome and manifold pressurise
+	for (int k = 0; k < 3000; ++k) s.Step(kDt);   // arm (3 s): isolation valves travel, dome and manifold pressurise
 	s.ResetCounters();
 	BurstResult r;
 	const double m0 = s.GasMassKg() + s.ManifoldMassKg();
@@ -178,11 +189,15 @@ static BurstResult RearBurst(const Config& cfg, double fillBar, const char* labe
 	r.usPerStep = (Now() - t0) / steps * 1e6;
 	if (print) PrintRow(s, t);
 	for (int i = 0; i < 4; ++i) s.Command(i, 0.0);
-	for (int k = 0; k < 100; ++k) s.Step(kDt);
+	for (int k = 0; k < 100; ++k)
+	{
+		s.Step(kDt);
+		for (int i = 0; i < 4; ++i) { r.frameMass += s.Nozzle(i).MassFlowKgS * kDt; r.frameImpulse += s.Nozzle(i).ThrustN * kDt; }
+	}
 	r.impulse = s.Tel().TotalImpulseNs;
 	r.massUsed = m0 - (s.GasMassKg() + s.ManifoldMassKg());
 	r.endP = s.Tel().Tank[0].PressureBar; r.endT = s.Tel().Tank[0].TempK;
-	r.massErr = s.MassBalanceErrorKg(); r.energyErr = s.EnergyBalanceErrorJ();
+	r.massErr = s.MassBalanceErrorKg(); r.energyErr = s.EnergyBalanceErrorJ(); r.energyScale = s.EnergyThroughputJ();
 	if (print)
 	{
 		std::printf("  => regulated (dropout) at %.3f s | <90%% of 80 kN at %.3f s | <10%% (8 kN) at %.3f s | total impulse %.1f kN s from %.1f kg (mean Isp %.1f s)\n",
@@ -307,9 +322,27 @@ int main()
 		{
 			System r(Config::Rocket()); r.Fill(379, 293.15); r.SetArmed(true); for (int k = 0; k < 1000; ++k) r.Step(kDt);
 			System q = r; q.Command(8, 1.0); for (int k = 0; k < 200; ++k) q.Step(kDt);
-			double Iy = pulse(r, 8, 0.020, false, nullptr), Iyb = pulse(r, 8, 0.001, false, nullptr);
+			std::printf("  yaw nozzle 20 ms pulse (dead 3 ms, 17 ms full-stroke open, 12.5 ms close, valve area 3x throat):\n");
+			double Iy = pulse(r, 8, 0.020, true, nullptr), Iyb = pulse(r, 8, 0.001, false, nullptr);
 			std::printf("  yaw nozzle (Rocket): steady %.2f kN; 20 ms pulse %.1f N s (%.0f %% of square); min impulse bit %.1f N s -> %.2f deg/s yaw-rate bit on Izz 2500 kg m2 at 2.2 m arm\n",
 				q.Nozzle(8).ThrustN / 1000, Iy, 100 * Iy / (q.Nozzle(8).ThrustN * 0.02), Iyb, Iyb * 2.2 / 2500 * 57.2958);
+			// cost when armed but not firing, and with the flight assist trimming four corners every frame
+			System idle = r;
+			double t0 = Now(); for (int k = 0; k < 20000; ++k) idle.Step(kDt);
+			const double usIdle = (Now() - t0) / 20000 * 1e6;
+			System trim = r;
+			t0 = Now();
+			for (int k = 0; k < 2000; ++k) { for (int i = 4; i < 8; ++i) trim.CommandThrust(i, 1500.0 + 500.0 * std::sin(0.01 * k + i)); trim.Step(kDt); }
+			std::printf("  cost per 1 ms vehicle step: armed idle %.2f us; flight-assist trimming 4 lift nozzles %.1f us (Rocket)\n", usIdle, (Now() - t0) / 2000 * 1e6);
+			// pit refill while armed: lines charged to lock-up, UI must read 5,500 psi / 100 % / Boost Ready at once
+			System pit(Config::Thrust()); pit.SetArmed(true); pit.Fill(379, 293.15);
+			t0 = Now(); for (int k = 0; k < 20000; ++k) pit.Step(kDt);
+			std::printf("  refill while armed: display %.0f psi, gas %.1f %%, manifold %.1f bar after 20 s parked (cost %.2f us/step)\n",
+				pit.Tel().DisplayPsi, 100 * pit.Tel().GasFraction, pit.Tel().ManifoldBar, (Now() - t0) / 20000 * 1e6);
+			// unlimited-gas demo mode keeps the books straight
+			System demo = r;
+			for (int k = 0; k < 500; ++k) { for (int i = 0; i < 4; ++i) demo.Command(i, 1.0); demo.Step(kDt); if (k % 100 == 99) demo.TopUp(); }
+			std::printf("  TopUp() demo mode after 0.5 s of full boost with 5 top-ups: mass residual %.1e kg, first-law residual %.1e J\n", demo.MassBalanceErrorKg(), demo.EnergyBalanceErrorJ());
 		}
 	}
 
@@ -326,15 +359,18 @@ int main()
 			const TankTelemetry& k = s.Tel().Tank[0];
 			std::printf("   %8.0f s    |  %6.1f  %6.1f  |   %6.1f       %6.1f    |    %6.1f        |  %6.1f     | %7.0f\n", t, k.TempK, k.PressureBar, k.LinerInnerK, k.LinerMinK, k.OverwrapOuterK, k.InnerHtc, k.WallHeatW);
 		}
-		std::printf("   conservation over burst + 1 h soak: mass %.2e kg, energy %.2e J (of %.3e J stored)\n", s.MassBalanceErrorKg(), s.EnergyBalanceErrorJ(), 0.0);
+		std::printf("   conservation over burst + 1 h soak: mass %.1e kg, first-law residual %.1e J of %.2e J throughput\n", s.MassBalanceErrorKg(), s.EnergyBalanceErrorJ(), s.EnergyThroughputJ());
 	}
 
 	// ---------------------------------------------------------------- (f) conservation summary
 	Title("(f) Conservation (exact bookkeeping; residuals are round-off)");
 	auto cons = [](const char* n, const BurstResult& r) {
-		std::printf("  %-24s internal mass %.2e kg, energy %.2e J | frame-integrated nozzle mass %.4f kg vs stored-mass loss %.4f kg (diff %.1e) | impulse frames %.1f vs internal %.1f N s\n",
-			n, r.massErr, r.energyErr, r.frameMass, r.massUsed, r.frameMass - r.massUsed, r.frameImpulse, r.impulse);
+		std::printf("  %-24s mass residual %.1e kg, first-law residual %.1e J (%.0e of %.2e J throughput) | frame-integrated nozzle mass %.5f vs stored-mass loss %.5f kg (diff %.1e) | impulse %.1f vs %.1f N s\n",
+			n, r.massErr, r.energyErr, r.energyErr / r.energyScale, r.energyScale, r.frameMass, r.massUsed, r.frameMass - r.massUsed, r.frameImpulse, r.impulse);
 	};
 	cons("Thrust @ 379", a1); cons("Rocket @ 379", a2); cons("Thrust @ 690", b1); cons("Rocket @ 690", b2);
+	const BurstResult again = RearBurst(Config::Thrust(), 379, "", false);
+	std::printf("  determinism: repeat Thrust @ 379 run -> impulse %.9f vs %.9f N s, residual gas %s\n", again.impulse, a1.impulse,
+		again.impulse == a1.impulse && again.endT == a1.endT ? "bit-identical" : "DIFFERENT");
 	return 0;
 }

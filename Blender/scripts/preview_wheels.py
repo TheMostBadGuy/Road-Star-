@@ -83,7 +83,7 @@ def setup_eevee(sc):
     ramp.color_ramp.elements[0].position = 0.45
     ramp.color_ramp.elements[0].color = (0.010, 0.010, 0.011, 1)
     ramp.color_ramp.elements[1].position = 1.0
-    ramp.color_ramp.elements[1].color = (0.30, 0.30, 0.31, 1)
+    ramp.color_ramp.elements[1].color = (0.10, 0.10, 0.105, 1)
     nt.links.new(tex.outputs["Generated"], sep.inputs[0])
     nt.links.new(sep.outputs["Z"], ramp.inputs[0])
     nt.links.new(ramp.outputs["Color"], bg.inputs["Color"])
@@ -157,6 +157,39 @@ def ground():
     m = roadster_materials.mat("M_Preview_Floor", (0.05, 0.05, 0.052), rough=0.6)
     me.materials.append(m)
     return ob
+
+
+def fender_proxy(objs_out, M):
+    """Stand-in for the body around each wheel arch (white shell above the wheel, side wall with the arch cut)
+    so the wheel interior is shaded the way the real body shades it. Preview only."""
+    import bmesh
+    paint = M["Paint"]
+    for key, g, xa in (("Front", RW.geom("Front"), RW.FA), ("Rear", RW.geom("Rear"), RW.RA)):
+        for side in (1, -1):
+            bm = bmesh.new()
+            c = Vector((xa, 0, g["R"]))
+            ra, rb = g["R"] + 0.024, 0.80
+            y0, y1 = side * 0.50, side * 1.0
+            n = 40
+            ring = []
+            for i in range(n + 1):
+                a = math.radians(-12 + (192 * i / n))
+                d = Vector((-math.cos(a), 0, math.sin(a)))
+                ring.append((d, a))
+            vi, vo = [], []
+            for d, a in ring:
+                vi.append((bm.verts.new(c + d * ra + Vector((0, y0, 0))), bm.verts.new(c + d * ra + Vector((0, y1, 0)))))
+                vo.append(bm.verts.new(c + d * rb + Vector((0, y1, 0))))
+            for i in range(n):
+                bm.faces.new((vi[i][0], vi[i + 1][0], vi[i + 1][1], vi[i][1]))      # arch liner
+                bm.faces.new((vi[i][1], vi[i + 1][1], vo[i + 1], vo[i]))            # body side around the arch
+            me = bpy.data.meshes.new("Fender")
+            bm.to_mesh(me)
+            bm.free()
+            me.materials.append(paint)
+            ob = bpy.data.objects.new("Prev_Fender_%s_%d" % (key, side), me)
+            bpy.context.collection.objects.link(ob)
+            objs_out.append(ob)
 
 
 def photo_crop(key):
@@ -279,16 +312,21 @@ def main():
         for n in ("Wheel_" + key, "Brake_%s_Disc" % key, "Brake_%s_Caliper" % key):
             objs[n].hide_render = True
     gnd = ground()
+    fenders = []
+    fender_proxy(fenders, M)
 
     # ---------------------------------------------------------------- 1. side matches (studio key from above)
-    key_l = add_area("Key", (0.0, 3.0, 4.5), (0.0, 0.5, 0.3), 2600, 6.0)
-    fill = add_area("Fill", (0.0, 6.0, 0.6), (0.0, 0.0, 0.4), 500, 4.0)
+    key_l = add_area("Key", (0.0, 2.2, 4.0), (0.0, 0.9, 0.3), 750, 5.0)
+    fill = add_area("Fill", (0.0, 6.0, 0.7), (0.0, 0.0, 0.4), 25, 4.0)
+    kick = add_area("Kick", (2.5, 3.0, 0.15), (1.4, 0.9, 0.3), 60, 2.0)
     for key, g, xa, cname in (("Front", gF, RW.FA, "side_front"), ("Rear", gR, RW.RA, "side_rear")):
         y = RW.CORNER_Y[key[0]]
         cam = camera("Cam_" + cname, (xa, 8.0, g["R"]), rot=(math.pi / 2, 0, math.pi), ortho=2 * HALF * MMPX)
         p = render(sc, cam, cname + "_match", 2 * HALF * UP, 2 * HALF * UP)
         compare(key, p, cname + "_compare")
 
+    for f in fenders:
+        f.hide_render = True
     # ---------------------------------------------------------------- 2. 3/4 close-up (as 08-End)
     WCf = Vector((RW.FA, RW.CORNER_Y["F"], gF["R"]))
     cam = camera("Cam_34", WCf + Vector((1.25, 1.05, 0.30)), WCf + Vector((0.0, 0.03, 0.0)), lens=70)
@@ -303,6 +341,9 @@ def main():
     # ---------------------------------------------------------------- 4. suspension views
     for n in ("WFL", "WFR", "WRL", "WRR"):
         inst[n].hide_render = True
+    for f in fenders:
+        f.hide_render = True
+    key_l.data.energy = 2400
     gnd.hide_render = False
     cam = camera("Cam_susp", Vector((RW.FA + 0.95, 1.45, 1.05)), Vector((RW.FA, 0.55, 0.38)), lens=35)
     render(sc, cam, "susp_front_corner", 1600, 1100)

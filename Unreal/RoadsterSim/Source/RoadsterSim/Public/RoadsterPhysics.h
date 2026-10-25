@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // Tesla Roadster (2nd generation, revealed 15 Oct 2026) vehicle dynamics core.
 // Pure C++17 with no engine types, so it is unit-tested outside Unreal (Tests/PhysicsHarness.cpp).
 //
@@ -14,6 +14,7 @@
 #include <functional>
 #include <algorithm>
 #include <array>
+#include "ColdGasSystem.h"
 
 namespace Roadster
 {
@@ -218,10 +219,17 @@ namespace Roadster
 		// Cold-gas thrusters (Thrust / Rocket trims)
 		double TankFullBar = 379;          // 5,500 psi as shown full ("100% - Boost Ready") in Tesla's UI
 		double GasTempK = 293;
-		double RearThrustFullN = 80000;    // ">80 kN" from the 4 rear nozzles (EXEC), at full tank
-		double LiftThrustFullN = 13000;    // EST per corner nozzle (Rocket)
-		double YawThrustFullN = 4000;      // EST per front yaw nozzle (Rocket)
-		double ExhaustVelocity = 700;      // N2 cold gas, Isp ~71 s
+		// Rated thrusts are normalisers for telemetry/plumes; delivered thrust comes from ColdGasSystem.h
+		double RearThrustFullN = 80000;    // ">80 kN" from the 4 rear nozzles (EXEC): 4 x 19.9 kN at 150 bar manifold
+		double LiftThrustFullN = 13000;    // per corner lift nozzle (Rocket), 12.9 kN rated
+		double YawThrustFullN = 4000;      // per front yaw nozzle (Rocket)
+		double ExhaustVelocity = 600;      // sea-level effective, fresh gas (Isp ~61 s); blowdown mean is lower
+		// Nozzle exits in the body frame (x fwd, y RIGHT, z up; metres), from Tesla's photos:
+		// rear bank on the shelf above the fan box (Gravity/Augments), lift nozzles behind each wheel pointing down
+		// (World/Gravity), yaw jets at the front corners firing sideways
+		V3 RearNozzlePos[4] = { { -2.12, -0.37, 0.585 }, { -2.12, -0.123, 0.585 }, { -2.12, 0.123, 0.585 }, { -2.12, 0.37, 0.585 } };
+		V3 LiftNozzlePos[4] = { { 0.95, -0.80, 0.12 }, { 0.95, 0.80, 0.12 }, { -1.95, -0.665, 0.20 }, { -1.95, 0.665, 0.20 } };   // FL FR RL RR
+		V3 YawNozzlePos[2] = { { 1.95, -0.75, 0.30 }, { 1.95, 0.75, 0.30 } };   // left-firing (exits left), right-firing
 
 		// Trim-dependent (filled by ApplyTrim)
 		Trim TrimLevel = Trim::Rocket;
@@ -231,19 +239,16 @@ namespace Roadster
 		bool bHasLiftThrusters = true;
 		int Seats = 1;
 
-		// Real-gas correction for N2 near room temperature (Z ~ 1.3 at 380 bar)
-		static double Z(double bar) { return 1.0 + 0.0008 * bar; }
-		double GasKgAt(double bar) const { return bar * 1e5 * (TankVolumeL * 1e-3) / (Z(bar) * kN2GasConstant * GasTempK); }
-		double FullTankKg() const { return TankVolumeL > 0 ? GasKgAt(TankFullBar) : 0.0; }
-
 		void ApplyTrim(Trim t)
 		{
 			TrimLevel = t;
 			switch (t)
 			{
 			case Trim::Performance: TankVolumeL = 0;   TrimExtraMassKg = 0;   bHasRearThrusters = false; bHasLiftThrusters = false; Seats = 2; break;
-			case Trim::Thrust:      TankVolumeL = 200; TrimExtraMassKg = 75;  bHasRearThrusters = true;  bHasLiftThrusters = false; Seats = 2; break;
-			case Trim::Rocket:      TankVolumeL = 600; TrimExtraMassKg = 210; bHasRearThrusters = true;  bHasLiftThrusters = true;  Seats = 1; break;
+			// augment hardware mass (gas is separate, TankKg): 690 bar Type-IV vessels (96 kg / 200 L, 187 kg / 400 L,
+			// Mirai-class mass efficiency) + valves, regulator, lines and nozzles; Rocket drops the passenger seat
+			case Trim::Thrust:      TankVolumeL = 200; TrimExtraMassKg = 135; bHasRearThrusters = true;  bHasLiftThrusters = false; Seats = 2; break;
+			case Trim::Rocket:      TankVolumeL = 600; TrimExtraMassKg = 330; bHasRearThrusters = true;  bHasLiftThrusters = true;  Seats = 1; break;
 			}
 		}
 	};
@@ -367,6 +372,7 @@ namespace Roadster
 		Telemetry T;
 		double EnergyKWh = 120;
 		double TankKg = 0;
+		ColdGas::System Gas;    // valve-level cold-gas system (copyable; the isentrope table is a shared static)
 		double FanRPM = 0;
 		double SkirtDeploy = 0;   // 0..1
 		double WingAngle = 1, FrontWingAngle = 1;
@@ -377,13 +383,8 @@ namespace Roadster
 
 		V3 CGBody() const { return { S.CGForward, 0, S.CGHeight - (Set.bLowSuspension ? S.LowRideDrop : 0.0) }; }
 		double TotalMass() const { return S.DryMassKg + S.TrimExtraMassKg + TankKg; }
-		double TankBar() const
-		{
-			if (S.TankVolumeL <= 0 || TankKg <= 0) return 0;
-			// invert m = pV/(Z(p) R T) with Z = 1 + a p  ->  p = mRT / (V - a m R T)
-			const double mRT = TankKg * kN2GasConstant * S.GasTempK, Vm3 = S.TankVolumeL * 1e-3;
-			return mRT / (Vm3 * 1e5 - 0.0008 * mRT);
-		}
+		/** Volume-weighted vessel pressure (real-gas nitrogen, ColdGasSystem.h): the UI's "Thruster xxxx PSI". */
+		double TankBar() const { return S.TankVolumeL > 0 ? Gas.Tel().DisplayBar : 0.0; }
 		double SOC() const { return EnergyKWh / S.BatteryKWh; }
 		double TargetCompression() const { return S.StaticCompression; }
 
@@ -439,12 +440,20 @@ namespace Roadster
 			probe(0.00, 0.00, 0.15, 0.09);
 
 			EnergyKWh = S.BatteryKWh;
-			TankKg = S.FullTankKg();
+			const bool fitted = S.TankVolumeL > 0;
+			Gas = ColdGas::System(fitted ? S.TankVolumeL : 200.0);   // 200 L -> Thrust, 600 L -> Rocket (200 + 400 on a common header)
+			RefillTank();
 			FanRPM = 0; SkirtDeploy = 0; HeavePreload = 0;
 			T = Telemetry();
 		}
 
-		void RefillTank() { TankKg = S.FullTankKg(); }
+		void RefillTank()
+		{
+			// armed fill: lines charged to lock-up, "Boost Ready" at 5,497 psi
+			Gas.SetArmed(S.TankVolumeL > 0 && Set.bThrustersArmed);
+			Gas.Fill(S.TankFullBar, S.GasTempK);
+			TankKg = S.TankVolumeL > 0 ? Gas.GasMassKg() + Gas.ManifoldMassKg() : 0.0;
+		}
 		void Recharge() { EnergyKWh = S.BatteryKWh; }
 
 		// Place the car resting on a surface: body origin on the surface, oriented by q.
@@ -683,79 +692,86 @@ namespace Roadster
 			}
 			const bool airborne = contactsNow == 0;
 
-			// ---- cold-gas thrusters (blowdown: thrust proportional to tank pressure)
+			// ---- cold-gas thrusters: valve-level model (ColdGasSystem.h). The attitude controller requests thrust per
+			// nozzle; the gas model (vessels, regulator, valves, nozzles) decides what the hardware actually delivers.
 			{
-				const double tankBar = TankBar();
-				const double pFrac = S.TankFullBar > 0 ? Clamp(tankBar / S.TankFullBar, 0, 1.2) : 0.0;
-				const double auth = (Set.bThrustersArmed ? 1.0 : 0.0) * Clamp(Set.BoostLevel, 0.25, 1.0) * pFrac;
-				double total = 0;
-				// rear bank: 4 nozzles under the plate
-				double fRear = 0;
-				if (S.bHasRearThrusters) fRear = Clamp(in.Boost, 0, 1) * S.RearThrustFullN * auth;
-				if (fRear > 0)
-				{
-					for (int k = 0; k < 4; ++k)
-						addForceAt(fwd * (fRear * 0.25), BodyToWorld({ -S.Wheelbase * 0.5 - S.RearOverhang, -0.33 + 0.22 * k, 0.36 }));
-					total += fRear;
-				}
-				// corner lift nozzles + front yaw pair (Rocket)
+				const bool fitted = S.TankVolumeL > 0;
+				Gas.SetArmed(fitted && Set.bThrustersArmed);
+				const double auth = Clamp(Set.BoostLevel, 0.25, 1.0);   // "Valve authority": caps every thrust request
+
+				// rear bank: BOOST asks for a fraction of rated thrust; the model gives what the manifold can deliver
+				for (int k = 0; k < 4; ++k)
+					Gas.CommandThrust(k, S.bHasRearThrusters ? Clamp(in.Boost, 0, 1) * auth * Gas.Cfg().Nozzle[k].RatedThrustN : 0.0);
+
+				// corner lift + front yaw pair (Rocket). Allocation is about the CG with the real nozzle positions:
+				// the collective share is moment-neutral, roll/pitch corrections are differential.
 				double corner[4] = { 0, 0, 0, 0 }, yawL = 0, yawR = 0;
-				if (S.bHasLiftThrusters && auth > 0)
+				if (S.bHasLiftThrusters && Gas.Tel().bArmed)
 				{
 					const double base = Clamp(in.Lift, 0, 1);
-					// attitude controller: hold wheels-down (or follow pilot pitch/roll) using differential corner thrust
 					V3 tauB;
 					const bool assist = Set.bFlightAssist && (airborne || base > 0.05);
 					const V3 upB = Q.Unrotate(V3(0, 0, 1));          // world up in body frame
 					if (assist)
 					{
 						const double pitchCmd = Clamp(in.Pitch, -1, 1) * 0.5, rollCmd = Clamp(in.Roll, -1, 1) * 0.6;
-						// desired body-up direction: world up tilted by pilot command
 						V3 want = (upB + V3(-std::sin(pitchCmd), std::sin(rollCmd), 0) * 1.0).Norm();
 						const V3 err = V3(0, 0, 1).Cross(want);       // rotate body +Z towards want
 						tauB = V3(err.x * 70000.0 - wBody.x * 9000.0, err.y * 70000.0 - wBody.y * 22000.0, 0);
 					}
 					else if (airborne)
-					{
 						tauB = V3(in.Roll * 18000.0, -in.Pitch * 30000.0, 0);
-					}
-					const double X0 = S.Wheelbase * 0.5, Y0 = 0.62;
-					const double a = tauB.x / (4 * Y0 * Y0), b = -tauB.y / (4 * X0 * X0);
-					const double cap = S.LiftThrustFullN * auth;
+					const V3 cg = CGBody();
+					double xr[4], yr[4], sxx = 0, syy = 0;
+					for (int k = 0; k < 4; ++k) { xr[k] = S.LiftNozzlePos[k].x - cg.x; yr[k] = S.LiftNozzlePos[k].y; sxx += xr[k] * xr[k]; syy += yr[k] * yr[k]; }
+					const double xf = 0.5 * (xr[0] + xr[1]), xb = 0.5 * (xr[2] + xr[3]);
+					const double wf = -xb / (xf - xb), wb = xf / (xf - xb);   // moment-neutral split of the collective
+					double cap[4], capMean = 0;
+					for (int k = 0; k < 4; ++k) { cap[k] = Gas.MaxThrustN(ColdGas::LiftFL + k) * auth; capMean += 0.25 * cap[k]; }
+					const double a = tauB.x / syy, b = -tauB.y / sxx;
 					for (int k = 0; k < 4; ++k)
-					{
-						const double xk = (k < 2) ? X0 : -X0, yk = (k % 2) ? Y0 : -Y0;
-						const double f = base * cap + a * yk + b * xk;
-						corner[k] = Clamp(f, 0, cap);
-					}
-					// pure-differential corrections only fire above a deadband, to save gas
-					if (base < 0.02) for (double& c : corner) if (c < 0.05 * cap) c = 0;
-					for (int k = 0; k < 4; ++k)
-					{
-						if (corner[k] <= 0) continue;
-						const double xk = (k < 2) ? X0 + 0.15 : -X0 + 0.25, yk = (k % 2) ? 0.78 : -0.78;
-						addForceAt(up * corner[k], BodyToWorld({ xk, yk, 0.12 }));
-						total += corner[k];
-					}
+						corner[k] = Clamp(base * capMean * 2.0 * (k < 2 ? wf : wb) + a * yr[k] + b * xr[k], 0, cap[k]);
+					if (base < 0.02) for (double& c : corner) if (c < 0.05 * capMean) c = 0;   // deadband on pure trim, saves gas
 					const double yawCmd = Clamp(in.Yaw, -1, 1) + (airborne && assist ? Clamp(-wBody.z * 0.8, -1, 1) : 0.0);
-					if (yawCmd > 0.02) yawR = yawCmd * S.YawThrustFullN * auth;   // pushes nose right
-					if (yawCmd < -0.02) yawL = -yawCmd * S.YawThrustFullN * auth;
-					const V3 nose = BodyToWorld({ S.Wheelbase * 0.5 + S.FrontOverhang - 0.1, 0, 0.35 });
-					if (yawR > 0) { addForceAt(right * yawR, nose); total += yawR; }
-					if (yawL > 0) { addForceAt(-right * yawL, nose); total += yawL; }
-					for (int k = 0; k < 4; ++k) T.ThrustCorner[k] = cap > 0 ? corner[k] / S.LiftThrustFullN : 0;
+					if (yawCmd > 0.02) yawR = yawCmd * Gas.MaxThrustN(ColdGas::YawLeftFiring) * auth;
+					if (yawCmd < -0.02) yawL = -yawCmd * Gas.MaxThrustN(ColdGas::YawRightFiring) * auth;
 				}
-				else for (double& c : T.ThrustCorner) c = 0;
-				const double mdot = total / S.ExhaustVelocity;
-				if (Set.bInfiniteGas) TankKg = S.FullTankKg();
-				else TankKg = std::max(0.0, TankKg - mdot * h);
-				T.ThrustRear = fRear / S.RearThrustFullN;
-				T.ThrustYawL = yawL / S.YawThrustFullN; T.ThrustYawR = yawR / S.YawThrustFullN;
-				T.ThrustN = total;
-				T.TankBar = TankBar(); T.TankKg = TankKg;
-				T.TankPercent = S.FullTankKg() > 0 ? TankKg / S.FullTankKg() : 0;
-			}
+				for (int k = 0; k < 4; ++k) Gas.CommandThrust(ColdGas::LiftFL + k, corner[k]);
+				Gas.CommandThrust(ColdGas::YawLeftFiring, yawR);    // nozzle 8: jet exits to the left -> nose pushed right
+				Gas.CommandThrust(ColdGas::YawRightFiring, yawL);   // nozzle 9: jet exits to the right -> nose pushed left
 
+				if (Set.bInfiniteGas && Gas.Tel().GasFraction < 0.995) Gas.TopUp();   // demo mode (books stay balanced)
+				Gas.Step(h, ColdGas::kPatm, S.AmbientC + 273.15);
+
+				// apply the thrust actually delivered at the nozzle exits
+				double rear = 0, lift = 0;
+				for (int k = 0; k < 4; ++k)
+				{
+					const double Fn = Gas.Nozzle(k).ThrustN;
+					if (Fn > 0) addForceAt(fwd * Fn, BodyToWorld(S.RearNozzlePos[k]));
+					rear += Fn;
+				}
+				for (int k = 0; k < 4; ++k)
+				{
+					const double Fn = Gas.Nozzle(ColdGas::LiftFL + k).ThrustN;
+					T.ThrustCorner[k] = Fn / S.LiftThrustFullN;
+					if (Fn <= 0) continue;
+					addForceAt(up * Fn, BodyToWorld(S.LiftNozzlePos[k]));
+					lift += Fn;
+				}
+				// yaw jets: nozzle 8 exhausts to the car's left (force to the right), nozzle 9 the opposite
+				const double FyR = Gas.Nozzle(ColdGas::YawLeftFiring).ThrustN, FyL = Gas.Nozzle(ColdGas::YawRightFiring).ThrustN;
+				if (FyR > 0) addForceAt(right * FyR, BodyToWorld(S.YawNozzlePos[0]));
+				if (FyL > 0) addForceAt(-right * FyL, BodyToWorld(S.YawNozzlePos[1]));
+
+				TankKg = fitted ? Gas.GasMassKg() + Gas.ManifoldMassKg() : 0.0;
+				T.ThrustRear = rear / S.RearThrustFullN;
+				T.ThrustYawR = FyR / S.YawThrustFullN; T.ThrustYawL = FyL / S.YawThrustFullN;
+				T.ThrustN = rear + lift + FyR + FyL;
+				T.TankBar = fitted ? Gas.Tel().DisplayBar : 0.0;          // volume-weighted vessel pressure -> "Thruster xxxx PSI"
+				T.TankKg = TankKg;
+				T.TankPercent = fitted ? Gas.Tel().GasFraction : 0.0;      // usable gas (above the 10 bar residual) vs a full fill
+			}
 			// ---- powertrain torque request (RWD, one motor per rear wheel)
 			const double throttle = std::pow(Clamp(pedalDrive, 0, 1), throttleGamma);
 			const double dirSign = bReverseGear ? -1.0 : 1.0;

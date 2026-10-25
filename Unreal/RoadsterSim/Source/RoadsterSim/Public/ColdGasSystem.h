@@ -58,11 +58,13 @@
 //    Valve and throat are solved in series (bracketed Illinois) for the plenum pressure. Throttling across the valve
 //    is isenthalpic: T_plenum = T_manifold - mu_JT*dp.
 //
-// HONESTY NOTES (see the harness for numbers): a cold N2 rocket gives Isp ~65 s at sea level and ~68 s in vacuum
-// from 293 K (Sutton: 73 s measured, 80 s theoretical at infinite expansion), falling as the gas cools. 80 kN
-// therefore costs ~125 kg/s, so the 200 L / 379 bar charge (~71 kg) holds 80 kN for only ~0.2 s and gives ~40-45 kN*s
-// in total. Tesla's "about 5 s of thrust" at ">80 kN" is not achievable with this hardware. The model simply
-// delivers what the gas can.
+// HONESTY NOTES (numbers from Tests/ColdGasHarness.cpp): these nozzles give Isp 61-62 s at sea level from 283-293 K
+// stagnation. The loss-free vacuum limit is 71 s at eps 25 (Sutton: 73 s measured, 80 s theoretical at infinite
+// expansion). Because the tank gas cools adiabatically during a burst (to ~100 K, the dew line), the mean Isp over a
+// full blowdown is only 44-48 s. 80 kN costs ~135 kg/s, so the 200 L / 379 bar charge (70.5 kg) holds 80 kN for
+// ~0.13 s before regulator dropout. Thrust falls below 8 kN at 0.8 s, and the burst delivers 29 kN*s in total
+// (Rocket 600 L: 0.48 s regulated, 2.3 s to 10 %, 89 kN*s). Tesla's "about 5 s of thrust" at ">80 kN" (~400 kN*s)
+// is not achievable with this hardware. The model delivers what the gas can.
 // =====================================================================================================================
 
 #include <algorithm>
@@ -728,12 +730,22 @@ namespace ColdGas
 				Solve(g);
 				for (int k = 0; k < kWallNodes; ++k) Wall[t].T[k] = kelvin;
 				Cutoff[t] = false; Relief[t] = false;
+				FillM[t] = g.m; FillU[t] = g.U;
 			}
 			{
-				const double v = Eos::VFromPT(kPatm, kelvin);
+				// disarmed: lines vented to ambient. Armed (pit refill with the system live): lines charged to
+				// regulator lock-up at the fill temperature, valves settled, so the car is "Boost Ready" immediately.
+				const double plock = C.RegSetpointBar * kBarPa * (1.0 + C.RegLockupFrac);
+				const double pm = bArmed ? std::min(plock, bar * kBarPa) : kPatm;
+				const double v = Eos::VFromPT(pm, kelvin);
 				Man.m = Man.V / v; Man.U = Man.m * Eos::U(kelvin, v); Man.T = kelvin;
 				Solve(Man);
 				ManWallT = kelvin;
+				if (bArmed)
+				{
+					for (int t = 0; t < NumTanks; ++t) IsoPos[t] = IsoCmd[t] ? 1.0 : 0.0;
+					Dome = DomeCmd = C.RegSetpointBar * kBarPa; RegX = 0.0;
+				}
 			}
 			for (auto& n : NzOut) n = NozzleOutput();
 			for (int i = 0; i < kNumNozzles; ++i) { Nz[i].prevW = 0; Nz[i].lastPlenum = 0; }
@@ -747,6 +759,20 @@ namespace ColdGas
 			M0 = TotalGasMass(); E0 = TotalGasEnergy() + TotalWallEnergy();
 			Mout = Mvent = Hout = Hvent = Qamb = 0;
 			Impulse = 0; BankImpulse[0] = BankImpulse[1] = BankImpulse[2] = 0;
+		}
+		// "Unlimited gas" demo mode: restore every vessel (gas and walls) to the last Fill() state without venting the
+		// manifold or touching valves. The added mass/energy is booked as an inflow, so the conservation checks hold.
+		void TopUp()
+		{
+			const double e0 = TotalGasEnergy() + TotalWallEnergy(), m0 = TotalGasMass();
+			for (int t = 0; t < NumTanks; ++t)
+			{
+				Tk[t].m = FillM[t]; Tk[t].U = FillU[t]; Tk[t].T = FillK;
+				Solve(Tk[t]);
+				for (int k = 0; k < kWallNodes; ++k) Wall[t].T[k] = FillK;
+				Cutoff[t] = false;
+			}
+			M0 += TotalGasMass() - m0; E0 += TotalGasEnergy() + TotalWallEnergy() - e0;
 		}
 		void SetArmed(bool armed) { bArmed = armed; }
 		void SetIsolation(int tank, bool open) { if (tank >= 0 && tank < 2) IsoCmd[tank] = open; }
@@ -858,6 +884,7 @@ namespace ColdGas
 		// Conservation diagnostics (should be round-off): mass in + out vs stored, and the first-law balance.
 		double MassBalanceErrorKg() const { return (TotalGasMass() + Mout + Mvent) - M0; }
 		double EnergyBalanceErrorJ() const { return (TotalGasEnergy() + TotalWallEnergy() + Hout + Hvent - Qamb) - E0; }
+		double EnergyThroughputJ() const { return std::fabs(Hout) + std::fabs(Hvent) + std::fabs(Qamb); }
 		double ManifoldMassKg() const { return Man.m; }
 		double TankMassKg(int t) const { return Tk[t].m; }
 		double TankWallMassKg(int t) const { return WallMass[t]; }
@@ -911,7 +938,7 @@ namespace ColdGas
 		NozzleCache Nz[kNumNozzles];
 		NozzleOutput NzOut[kNumNozzles];
 		Telemetry T;
-		double Time = 0, FillBar = 379, FillK = kAmbientK, UsableFull = 1;
+		double Time = 0, FillBar = 379, FillK = kAmbientK, UsableFull = 1, FillM[2] = { 0, 0 }, FillU[2] = { 0, 0 };
 		double M0 = 0, E0 = 0, Mout = 0, Mvent = 0, Hout = 0, Hvent = 0, Qamb = 0;
 		double Impulse = 0, BankImpulse[3] = { 0, 0, 0 };
 
@@ -1269,19 +1296,23 @@ namespace ColdGas
 			const double band = std::max((C.RegLockupFrac + C.RegDroopFrac) * Dome, 0.5 * kBarPa);
 			return Clampd((plock - Man.p) / band, 0.0, 1.0);
 		}
+		// Nothing can move gas: all nozzle valves shut and uncommanded, no header flow, actuators settled. The large
+		// idle sub-step then only carries the (slow) wall conduction and gas/wall heat exchange.
 		bool IsIdle(double pa) const
 		{
 			(void)pa;
 			for (int i = 0; i < kNumNozzles; ++i) if (C.Nozzle[i].bPresent && (Vs[i].Cmd > 0 || Vs[i].Out > 0 || Vs[i].Pos > 0)) return false;
-			if (RegX > 1e-9 || RegulatorTarget() > 0.0) return false;
-			const double domeT = bArmed ? C.RegSetpointBar * kBarPa : 0.0;
-			if (std::fabs(Dome - domeT) > 1e-6 * std::max(domeT, kBarPa)) return false;
+			if (HdrWreg > 1e-9 || HdrWabs > 1e-7) return false;
+			bool anyOpen = false;
 			for (int t = 0; t < NumTanks; ++t)
 			{
 				const double tgt = IsoTarget(t) ? 1.0 : 0.0;
 				if (std::fabs(IsoPos[t] - tgt) > 0.0 || Relief[t]) return false;
+				anyOpen = anyOpen || IsoPos[t] > 0.0;
 			}
-			return HdrWabs < 1e-7;
+			if (anyOpen && (RegX > 1e-9 || RegulatorTarget() > 0.0)) return false;
+			const double domeT = bArmed ? C.RegSetpointBar * kBarPa : 0.0;
+			return std::fabs(Dome - domeT) <= 1e-6 * std::max(domeT, kBarPa);
 		}
 		bool IsoTarget(int t) const { return bArmed && IsoCmd[t] && !Cutoff[t]; }
 

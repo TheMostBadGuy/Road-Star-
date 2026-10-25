@@ -1,4 +1,4 @@
-#include "RoadsterPawn.h"
+﻿#include "RoadsterPawn.h"
 #include "RoadsterRig.h"
 #include "RoadsterInterface.h"
 #include "TrackActor.h"
@@ -106,13 +106,14 @@ ARoadsterPawn::ARoadsterPawn()
 		P->SetVisibility(false);
 		return P;
 	};
+	// plumes sit at the same nozzle exits the physics pushes at (Spec, body frame: x fwd, y right, z up, metres)
+	const Spec NozzleSpec;
 	for (int32 k = 0; k < 4; ++k)   // rear bank, pointing backwards (cone apex at the nozzle)
-		PlumesRear.Add(MakePlume(*FString::Printf(TEXT("PlumeRear%d"), k), B2U(-2.25, (k - 1.5) * 0.25, 0.545), FRotator(90.f, 0, 0)));
-	const FVector LiftPos[4] = { B2U(0.9325, 0.80, 0.06), B2U(0.9325, -0.80, 0.06), B2U(-0.9125, 0.82, 0.06), B2U(-0.9125, -0.82, 0.06) };
-	for (int32 k = 0; k < 4; ++k)
-		PlumesLift.Add(MakePlume(*FString::Printf(TEXT("PlumeLift%d"), k), LiftPos[k], FRotator(0, 0, 0)));
-	PlumesYaw.Add(MakePlume(TEXT("PlumeYawL"), B2U(2.13, 0.46, 0.17), FRotator(0, 0, 90.f)));
-	PlumesYaw.Add(MakePlume(TEXT("PlumeYawR"), B2U(2.13, -0.46, 0.17), FRotator(0, 0, -90.f)));
+		PlumesRear.Add(MakePlume(*FString::Printf(TEXT("PlumeRear%d"), k), ToU(NozzleSpec.RearNozzlePos[k]) - FVector(5, 0, 0), FRotator(90.f, 0, 0)));
+	for (int32 k = 0; k < 4; ++k)   // corner lift nozzles, pointing down
+		PlumesLift.Add(MakePlume(*FString::Printf(TEXT("PlumeLift%d"), k), ToU(NozzleSpec.LiftNozzlePos[k]) - FVector(0, 0, 4), FRotator(0, 0, 0)));
+	PlumesYaw.Add(MakePlume(TEXT("PlumeYawL"), ToU(NozzleSpec.YawNozzlePos[0]), FRotator(0, 0, 90.f)));    // exits to the car's left
+	PlumesYaw.Add(MakePlume(TEXT("PlumeYawR"), ToU(NozzleSpec.YawNozzlePos[1]), FRotator(0, 0, -90.f)));
 
 	Smoke = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("Smoke"));
 	Smoke->SetupAttachment(Root);
@@ -538,17 +539,20 @@ void ARoadsterPawn::UpdateVisuals(float DeltaSeconds)
 			P->SetRelativeScale3D(FVector(Width, Width, Len * Frac * Flicker));
 		}
 	};
-	for (int32 k = 0; k < 4; ++k) Plume(PlumesRear[k], Sim.T.ThrustRear, 2.6f, 0.30f);
-	for (int32 k = 0; k < 4; ++k) Plume(PlumesLift[k], Sim.T.ThrustCorner[k], 2.2f, 0.28f);
-	Plume(PlumesYaw[0], Sim.T.ThrustYawR, 1.2f, 0.18f);   // nose pushed right -> jet exits left
-	Plume(PlumesYaw[1], Sim.T.ThrustYawL, 1.2f, 0.18f);
-	// plume cones are 100 cm tall with the pivot at the centre: shift so the apex sits at the nozzle
+	// per-nozzle delivered thrust from the valve-level gas model (valves open/close over 25-40 ms, thrust decays
+	// as the vessels blow down)
+	const ColdGas::System& G = Sim.Gas;
+	for (int32 k = 0; k < 4; ++k) Plume(PlumesRear[k], G.Nozzle(k).ThrustFrac, 2.6f, 0.30f);
+	for (int32 k = 0; k < 4; ++k) Plume(PlumesLift[k], G.Nozzle(ColdGas::LiftFL + k).ThrustFrac, 2.2f, 0.28f);
+	Plume(PlumesYaw[0], G.Nozzle(ColdGas::YawLeftFiring).ThrustFrac, 1.2f, 0.18f);    // jet exits to the left
+	Plume(PlumesYaw[1], G.Nozzle(ColdGas::YawRightFiring).ThrustFrac, 1.2f, 0.18f);
+	// plume cones are 100 cm tall with the pivot at the centre: shift so the apex sits at the nozzle exit
 	for (int32 k = 0; k < 4; ++k)
-		PlumesRear[k]->SetRelativeLocation(B2U(-2.15, (k - 1.5) * 0.25, 0.545) - FVector(PlumesRear[k]->GetRelativeScale3D().Z * 50.f, 0, 0));
-	const FVector LiftBase[4] = { B2U(0.9325, 0.80, 0.06), B2U(0.9325, -0.80, 0.06), B2U(-0.9125, 0.82, 0.06), B2U(-0.9125, -0.82, 0.06) };
+		PlumesRear[k]->SetRelativeLocation(ToU(Sim.S.RearNozzlePos[k]) - FVector(PlumesRear[k]->GetRelativeScale3D().Z * 50.f + 3.f, 0, 0));
 	for (int32 k = 0; k < 4; ++k)
-		PlumesLift[k]->SetRelativeLocation(LiftBase[k] - FVector(0, 0, PlumesLift[k]->GetRelativeScale3D().Z * 50.f));
-	if (PlumeMID) PlumeMID->SetScalarParameterValue(TEXT("Time"), GetWorld()->TimeSeconds);
+		PlumesLift[k]->SetRelativeLocation(ToU(Sim.S.LiftNozzlePos[k]) - FVector(0, 0, PlumesLift[k]->GetRelativeScale3D().Z * 50.f + 2.f));
+	PlumesYaw[0]->SetRelativeLocation(ToU(Sim.S.YawNozzlePos[0]) - FVector(0, PlumesYaw[0]->GetRelativeScale3D().Z * 50.f, 0));
+	PlumesYaw[1]->SetRelativeLocation(ToU(Sim.S.YawNozzlePos[1]) + FVector(0, PlumesYaw[1]->GetRelativeScale3D().Z * 50.f, 0));	if (PlumeMID) PlumeMID->SetScalarParameterValue(TEXT("Time"), GetWorld()->TimeSeconds);
 }
 
 void ARoadsterPawn::EmitPuff(const FVector& Pos, const FVector& Vel, float Size, float Life, float Growth, float Alpha)
@@ -572,19 +576,25 @@ void ARoadsterPawn::UpdateSmoke(float DeltaSeconds)
 				EmitPuff(ToU(W.ContactPoint) + FMath::VRand() * 15.f, CarVel * 0.3f + FMath::VRand() * 150.f, 60.f, 2.2f, 240.f, 0.35f * Rate);
 		}
 	}
-	if (Sim.T.ThrustRear > 0.05)
-		for (int32 k = 0; k < 4; ++k)
-			if (FMath::FRand() < 0.9f)
-			{
-				const FVector Nozzle = T.TransformPosition(B2U(-2.3, (k - 1.5) * 0.25, 0.545));
-				EmitPuff(Nozzle, CarVel * 0.2f - T.GetUnitAxis(EAxis::X) * (3000.f * Sim.T.ThrustRear) + FMath::VRand() * 200.f, 50.f, 1.6f, 500.f, 0.55f);
-			}
+	// cold nitrogen leaves the nozzles at 40-100 K: the jets condense into white vapour
 	for (int32 k = 0; k < 4; ++k)
-		if (Sim.T.ThrustCorner[k] > 0.05 && FMath::FRand() < 0.85f)
-		{
-			const FVector Lift[4] = { B2U(0.9325, 0.80, 0.0), B2U(0.9325, -0.80, 0.0), B2U(-0.9125, 0.82, 0.0), B2U(-0.9125, -0.82, 0.0) };
-			EmitPuff(T.TransformPosition(Lift[k]), CarVel * 0.2f - T.GetUnitAxis(EAxis::Z) * (2500.f * Sim.T.ThrustCorner[k]) + FMath::VRand() * 250.f, 45.f, 1.8f, 450.f, 0.5f);
-		}
+	{
+		const float F = Sim.Gas.Nozzle(k).ThrustFrac;
+		if (F > 0.05f && FMath::FRand() < 0.9f)
+			EmitPuff(T.TransformPosition(ToU(Sim.S.RearNozzlePos[k]) - FVector(15, 0, 0)), CarVel * 0.2f - T.GetUnitAxis(EAxis::X) * (3000.f * F) + FMath::VRand() * 200.f, 50.f, 1.6f, 500.f, 0.55f);
+	}
+	for (int32 k = 0; k < 4; ++k)
+	{
+		const float F = Sim.Gas.Nozzle(ColdGas::LiftFL + k).ThrustFrac;
+		if (F > 0.05f && FMath::FRand() < 0.85f)
+			EmitPuff(T.TransformPosition(ToU(Sim.S.LiftNozzlePos[k]) - FVector(0, 0, 10)), CarVel * 0.2f - T.GetUnitAxis(EAxis::Z) * (2500.f * F) + FMath::VRand() * 250.f, 45.f, 1.8f, 450.f, 0.5f);
+	}
+	for (int32 s = 0; s < 2; ++s)
+	{
+		const float F = Sim.Gas.Nozzle(ColdGas::YawLeftFiring + s).ThrustFrac;
+		if (F > 0.05f && FMath::FRand() < 0.7f)
+			EmitPuff(T.TransformPosition(ToU(Sim.S.YawNozzlePos[s])), CarVel * 0.2f + T.GetUnitAxis(EAxis::Y) * (s == 0 ? -1800.f : 1800.f) * F + FMath::VRand() * 150.f, 25.f, 1.0f, 260.f, 0.45f);
+	}
 	if (Sim.T.FanPowerKW > 20.0 && Sim.T.Speed < 25.0 && FMath::FRand() < 0.35f)
 		EmitPuff(T.TransformPosition(B2U(-2.25, FMath::FRandRange(-0.6f, 0.6f), 0.15)), CarVel * 0.5f - T.GetUnitAxis(EAxis::X) * 900.f + FMath::VRand() * 120.f, 40.f, 1.4f, 220.f, 0.12f);
 

@@ -1,0 +1,323 @@
+{
+ "parts": {
+  "Fan_Box": {
+   "tris": 21776,
+   "origin": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "mats": [
+    "M_Carbon",
+    "M_BlackGloss",
+    "M_Titanium",
+    "M_Aluminum",
+    "M_Rubber",
+    "M_Stainless"
+   ],
+   "uv": true
+  },
+  "Fan_0": {
+   "tris": 3828,
+   "origin": [
+    -1.955,
+    -0.452,
+    0.38
+   ],
+   "mats": [
+    "M_BlackGloss",
+    "M_Carbon",
+    "M_Aluminum"
+   ],
+   "uv": true
+  },
+  "Fan_1": {
+   "tris": 3828,
+   "origin": [
+    -1.955,
+    -0.145,
+    0.38
+   ],
+   "mats": [
+    "M_BlackGloss",
+    "M_Carbon",
+    "M_Aluminum"
+   ],
+   "uv": true
+  },
+  "Fan_2": {
+   "tris": 3828,
+   "origin": [
+    -1.955,
+    0.145,
+    0.38
+   ],
+   "mats": [
+    "M_BlackGloss",
+    "M_Carbon",
+    "M_Aluminum"
+   ],
+   "uv": true
+  },
+  "Fan_3": {
+   "tris": 3828,
+   "origin": [
+    -1.955,
+    0.452,
+    0.38
+   ],
+   "mats": [
+    "M_BlackGloss",
+    "M_Carbon",
+    "M_Aluminum"
+   ],
+   "uv": true
+  },
+  "Thrusters_Rear": {
+   "tris": 25548,
+   "origin": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "mats": [
+    "M_Titanium",
+    "M_Nozzle_Gold",
+    "M_BlackGloss",
+    "M_Aluminum",
+    "M_Stainless",
+    "M_Rubber"
+   ],
+   "uv": true
+  },
+  "Thrusters_Rocket": {
+   "tris": 29640,
+   "origin": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "mats": [
+    "M_Titanium",
+    "M_Nozzle_Gold",
+    "M_Chrome",
+    "M_BlackGloss",
+    "M_Stainless",
+    "M_Aluminum",
+    "M_Rubber"
+   ],
+   "uv": true
+  },
+  "COPV_Rocket": {
+   "tris": 14264,
+   "origin": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "mats": [
+    "M_COPV_Filament",
+    "M_Aluminum",
+    "M_Stainless",
+    "M_Rubber",
+    "M_BlackGloss",
+    "M_Nozzle_Gold",
+    "M_Titanium"
+   ],
+   "uv": true
+  },
+  "COPV_Trunk": {
+   "tris": 12496,
+   "origin": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "mats": [
+    "M_COPV_Filament",
+    "M_Aluminum",
+    "M_Stainless",
+    "M_Rubber",
+    "M_BlackGloss",
+    "M_Nozzle_Gold",
+    "M_Titanium"
+   ],
+   "uv": true
+  },
+  "ColdGas_Plumbing": {
+   "tris": 12628,
+   "origin": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "mats": [
+    "M_Stainless",
+    "M_Aluminum",
+    "M_BlackGloss",
+    "M_Nozzle_Gold",
+    "M_Rubber",
+    "M_Titanium",
+    "M_Light_Red"
+   ],
+   "uv": true
+  }
+ },
+ "total_tris": 131664,
+ "nozzles": [
+  {
+   "name": "Rear_-0.352",
+   "exit": [
+    -2.15,
+    -0.352,
+    0.584
+   ],
+   "exhaust": [
+    -1,
+    0,
+    0
+   ],
+   "throat_d": 0.022,
+   "exit_d": 0.072
+  },
+  {
+   "name": "Rear_-0.118",
+   "exit": [
+    -2.15,
+    -0.118,
+    0.584
+   ],
+   "exhaust": [
+    -1,
+    0,
+    0
+   ],
+   "throat_d": 0.022,
+   "exit_d": 0.072
+  },
+  {
+   "name": "Rear_+0.118",
+   "exit": [
+    -2.15,
+    0.118,
+    0.584
+   ],
+   "exhaust": [
+    -1,
+    0,
+    0
+   ],
+   "throat_d": 0.022,
+   "exit_d": 0.072
+  },
+  {
+   "name": "Rear_+0.352",
+   "exit": [
+    -2.15,
+    0.352,
+    0.584
+   ],
+   "exhaust": [
+    -1,
+    0,
+    0
+   ],
+   "throat_d": 0.022,
+   "exit_d": 0.072
+  },
+  {
+   "name": "Lift_Front_L",
+   "exit": [
+    0.975,
+    0.855,
+    0.09
+   ],
+   "exhaust": [
+    0,
+    0,
+    -1
+   ],
+   "throat_d": 0.011,
+   "exit_d": 0.056
+  },
+  {
+   "name": "Lift_Rear_L",
+   "exit": [
+    -2.0,
+    0.74,
+    0.2
+   ],
+   "exhaust": [
+    0,
+    0,
+    -1
+   ],
+   "throat_d": 0.011,
+   "exit_d": 0.056
+  },
+  {
+   "name": "Yaw_Front_L",
+   "exit": [
+    1.97,
+    0.912,
+    0.235
+   ],
+   "exhaust": [
+    0,
+    1,
+    0
+   ],
+   "throat_d": 0.009,
+   "exit_d": 0.03
+  },
+  {
+   "name": "Lift_Front_R",
+   "exit": [
+    0.975,
+    -0.855,
+    0.09
+   ],
+   "exhaust": [
+    0,
+    0,
+    -1
+   ],
+   "throat_d": 0.011,
+   "exit_d": 0.056
+  },
+  {
+   "name": "Lift_Rear_R",
+   "exit": [
+    -2.0,
+    -0.74,
+    0.2
+   ],
+   "exhaust": [
+    0,
+    0,
+    -1
+   ],
+   "throat_d": 0.011,
+   "exit_d": 0.056
+  },
+  {
+   "name": "Yaw_Front_R",
+   "exit": [
+    1.97,
+    -0.912,
+    0.235
+   ],
+   "exhaust": [
+    0,
+    -1,
+    0
+   ],
+   "throat_d": 0.009,
+   "exit_d": 0.03
+  }
+ ],
+ "copv_L": {
+  "rocket": 400.2797447718363,
+  "trunk": 200.7939561651858
+ }
+}

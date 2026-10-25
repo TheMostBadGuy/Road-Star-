@@ -459,11 +459,17 @@ void URoadsterInterface::PageThrusters(float X, float Y, float W, float H)
 		UI.Text(TEXT("PSI"), LX + LW * 0.5f, Y + 320, 24, RedDim, EAlign::Center, true);
 		UI.Bar(LX + 24, Y + 380, LW - 48, 22, T.TankPercent, Red, true);
 		UI.Text(FString::Printf(TEXT("%d%%  ·  %.1f kg N2"), FMath::RoundToInt(T.TankPercent * 100), T.TankKg), LX + 24, Y + 440, 26, Red);
-		const double Impulse = T.TankKg * S.ExhaustVelocity / 1000.0;
-		UI.Text(FString::Printf(TEXT("Impulse left %.0f kN·s"), Impulse), LX + LW - 24, Y + 440, 24, Red, EAlign::Right);
-		UI.Text(FString::Printf(TEXT("Rear thrust at this pressure  %.0f kN"), S.RearThrustFullN * FMath::Clamp(T.TankBar / S.TankFullBar, 0.0, 1.0) * Set.BoostLevel / 1000.0), LX + 24, Y + 520, 24, Red);
+		const ColdGas::System& G = Pawn->Sim.Gas;
+		UI.Text(FString::Printf(TEXT("Impulse left %.0f kN·s"), G.RemainingImpulseNs() / 1000.0), LX + LW - 24, Y + 440, 24, Red, EAlign::Right);
+		UI.Text(FString::Printf(TEXT("Rear thrust available  %.0f kN"), 4 * G.MaxThrustN(0) * Set.BoostLevel / 1000.0), LX + 24, Y + 500, 24, Red);
 		if (S.bHasLiftThrusters)
-			UI.Text(FString::Printf(TEXT("Lift (4 corners)  %.0f kN vs weight %.0f kN"), 4 * S.LiftThrustFullN * FMath::Clamp(T.TankBar / S.TankFullBar, 0.0, 1.0) * Set.BoostLevel / 1000.0, Pawn->Sim.TotalMass() * kG / 1000.0), LX + 24, Y + 570, 24, Red);
+		{
+			double Lift = 0; for (int32 k = 4; k < 8; ++k) Lift += G.MaxThrustN(k);
+			UI.Text(FString::Printf(TEXT("Lift (4 corners)  %.0f kN vs weight %.0f kN"), Lift * Set.BoostLevel / 1000.0, Pawn->Sim.TotalMass() * kG / 1000.0), LX + 24, Y + 540, 24, Red);
+		}
+		const ColdGas::Telemetry& GT = G.Tel();
+		UI.Text(FString::Printf(TEXT("Regulator  %.0f bar  ·  %.0f K%s"), GT.ManifoldBar, GT.RegOutletK, GT.bRegDropout ? TEXT("  ·  DROPOUT") : TEXT("")), LX + 24, Y + 580, 22, GT.bRegDropout ? Amber : RedDim);
+		UI.Text(FString::Printf(TEXT("Vessel gas  %.0f K%s"), GT.Tank[0].TempK, GT.Tank[0].bLinerBelowRating ? TEXT("  ·  LINER COLD") : TEXT("")), LX + 24, Y + 612, 22, GT.Tank[0].bLinerBelowRating ? Amber : RedDim);
 		UI.Text(T.TankPercent > 0.98 ? TEXT("BOOST READY") : (T.TankPercent > 0.05 ? TEXT("BOOST AVAILABLE") : TEXT("REFILL REQUIRED")), LX + LW * 0.5f, Y + 660, 30, T.TankPercent > 0.05 ? Red : Amber, EAlign::Center, true);
 	}
 }

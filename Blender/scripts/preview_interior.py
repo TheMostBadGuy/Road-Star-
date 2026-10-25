@@ -105,7 +105,7 @@ def lights():
     world.use_nodes = True
     bg = world.node_tree.nodes["Background"]
     bg.inputs["Color"].default_value = (0.42, 0.43, 0.45, 1)
-    bg.inputs["Strength"].default_value = 1.4
+    bg.inputs["Strength"].default_value = 0.45
     sc.world = world
     def area(name, loc, target, energy, size, color=(1, 1, 1)):
         ld = bpy.data.lights.new(name, 'AREA')
@@ -117,9 +117,9 @@ def lights():
         ob.location = loc
         look_at(ob, target)
         return ob
-    area("SkyFront", (3.2, 0.0, 2.2), (0.6, 0.0, 0.8), 1600, 3.0)          # bright overcast through the windshield
-    area("CabinTop", (-0.15, 0.0, 1.06), (-0.1, 0.0, 0.2), 55, 0.7)        # soft studio light over the seats
-    area("RearFill", (-1.2, 0.0, 1.0), (0.8, 0.0, 0.6), 35, 0.6)
+    area("SkyFront", (3.2, 0.0, 2.2), (0.6, 0.0, 0.8), 450, 3.0)           # overcast through the windshield
+    area("CabinTop", (-0.05, 0.0, 1.05), (0.0, 0.0, 0.2), 30, 0.9)         # soft studio light over the seats
+    area("RearFill", (-1.0, 0.0, 0.95), (0.8, 0.0, 0.7), 10, 0.5)
 
 
 def setup_render(sc, workbench=False):
@@ -167,6 +167,33 @@ def tri_count(ob):
     return sum(len(p.vertices) - 2 for p in ob.data.polygons)
 
 
+def landmarks():
+    """3D points of features measured on the Slide-4 photo (used to fit / check the photo camera)."""
+    Y = RI.yoke_matrix()
+    xr = -RI.YOKE_SETBACK
+    S = RI.screen_matrix()
+    hw, hh = RI.SCREEN_W / 2 + 0.0055, RI.SCREEN_H / 2 + 0.0055
+    L = {
+        "yoke_L": Y @ Vector((xr - 0.012, 0.165, 0.0)), "yoke_R": Y @ Vector((xr - 0.012, -0.165, 0.0)),
+        "yoke_T": Y @ Vector((xr - 0.010, 0.0, 0.086)), "yoke_B": Y @ Vector((xr - 0.010, 0.0, -0.086)),
+        "hub_C": Y @ Vector((xr - 0.047, 0.0, -0.009)),
+        "scr_TL": S @ Vector((-0.004, hw, hh)), "scr_TR": S @ Vector((-0.004, -hw, hh)),
+        "scr_BL": S @ Vector((-0.004, hw, -hh)), "scr_BR": S @ Vector((-0.004, -hw, -hh)),
+    }
+    out = {k: list(v) for k, v in L.items()}
+    zt = max(p.y for p in RI.roof_section(RI.X_HEADER - 0.006, 0.030, 8)) - 0.016
+    out["mirror_L"] = [RI.X_HEADER - 0.0195, 0.064, zt - 0.084]
+    out["mirror_R"] = [RI.X_HEADER - 0.0195, -0.064, zt - 0.084]
+    out["dash_line"] = [[0.905, y, RI.dash_top_z(0.905) + 0.001] for y in (0.40, 0.20, -0.20, -0.40)]
+    rail = []
+    for x in (1.15, 1.0, 0.8, 0.6, 0.4, 0.2, 0.0, -0.2, -0.4):
+        y6, z6 = RB.row_at(6, x)
+        rail.append([x, y6 - 0.040, z6 + 0.010])
+    out["rail_L"] = rail
+    out["rail_R"] = [[p[0], -p[1], p[2]] for p in rail]
+    return out
+
+
 def main():
     sc = reset()
     M = roadster_materials.materials()
@@ -188,6 +215,9 @@ def main():
         print("PART %-18s tris %7d  slots %s  loc %s rot %s" % (nm, t, [m.name for m in ob.data.materials],
               tuple(round(v, 4) for v in ob.location), tuple(round(math.degrees(v), 2) for v in ob.rotation_euler)))
     print("TOTAL tris", total)
+    import json
+    with open(os.path.join(OUT, "landmarks.json"), "w") as f:
+        json.dump(landmarks(), f, indent=1)
     bpy.context.view_layer.update()
     for nm, (worst, bad, wp) in RI.clearance_report(parts.values()).items():
         print("CLEARANCE %-18s worst %+.4f m  verts<3mm %5d  at %s" % (nm, worst, bad, wp))
@@ -212,12 +242,12 @@ def main():
     # Slide-4 camera: centreline, level with vertical lens shift (verticals stay vertical in the photo), ~16 mm.
     s4 = camera("Cam_Slide4", (-0.50, 0.012, 0.865), rot=(math.radians(90), 0, math.radians(-90)), lens=16.0, shift=(0.0, -0.075))
     pov = camera("Cam_DriverPOV", tuple(RI.EYE), rot=(math.radians(90 - 6), 0, math.radians(-90)), fov=80.0)
-    seat = camera("Cam_Seat", (0.62, -0.02, 0.98), target=(-0.08, 0.38, 0.47), lens=30.0)
+    seat = camera("Cam_Seat", (0.50, 0.02, 0.86), target=(-0.06, 0.38, 0.45), lens=26.0)
     yoke = camera("Cam_Yoke", (0.12, 0.30, 0.96), target=(0.50, 0.38, 0.78), lens=42.0)
-    render(sc, s4, "slide4", 2200, 1040, exposure=0.0)
-    render(sc, pov, "driver_pov", 1920, 1080)
-    render(sc, seat, "seat_close", 1600, 1000)
-    render(sc, yoke, "yoke_close", 1600, 1000)
+    render(sc, s4, "slide4", 2200, 1040, exposure=-1.0)
+    render(sc, pov, "driver_pov", 1920, 1080, exposure=-1.0)
+    render(sc, seat, "seat_close", 1600, 1000, exposure=-0.7)
+    render(sc, yoke, "yoke_close", 1600, 1000, exposure=-0.7)
 
     # layout checks without the shell
     if body:

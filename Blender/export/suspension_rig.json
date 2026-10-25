@@ -300,7 +300,7 @@
      "name": "Susp_FL_Spring",
      "pivot": [
       1.4425,
-      0.202,
+      0.167,
       0.61152
      ],
      "joint": "aim_scale",
@@ -313,7 +313,7 @@
      "target": "table.DP",
      "pivot_follows": "damper body (moves with Susp_Susp_FL_Damper's rotation about its pivot)",
      "table": "spring_scale",
-     "free_length_m": 0.12161,
+     "free_length_m": 0.15661,
      "driven_by": "rocker"
     },
     {
@@ -1095,21 +1095,21 @@
      0.05329
     ],
     "spring_scale": [
-     1.3265,
-     1.27329,
-     1.21963,
-     1.16546,
-     1.11079,
-     1.05562,
+     1.25353,
+     1.21222,
+     1.17054,
+     1.12849,
+     1.08603,
+     1.04319,
      1.0,
-     0.94401,
-     0.88778,
-     0.83147,
-     0.77534,
-     0.71973,
-     0.66512,
-     0.61216,
-     0.56182
+     0.95652,
+     0.91286,
+     0.86914,
+     0.82555,
+     0.78237,
+     0.73996,
+     0.69884,
+     0.65975
     ]
    },
    "motion_ratio_damper_per_wheel": 0.681,
@@ -2043,7 +2043,7 @@
      "name": "Susp_FR_Spring",
      "pivot": [
       1.4425,
-      -0.202,
+      -0.167,
       0.61152
      ],
      "joint": "aim_scale",
@@ -2056,7 +2056,7 @@
      "target": "table.DP",
      "pivot_follows": "damper body (moves with Susp_Susp_FR_Damper's rotation about its pivot)",
      "table": "spring_scale",
-     "free_length_m": 0.12161,
+     "free_length_m": 0.15661,
      "driven_by": "rocker"
     },
     {
@@ -2838,21 +2838,21 @@
      0.05329
     ],
     "spring_scale": [
-     1.3265,
-     1.27329,
-     1.21963,
-     1.16546,
-     1.11079,
-     1.05562,
+     1.25353,
+     1.21222,
+     1.17054,
+     1.12849,
+     1.08603,
+     1.04319,
      1.0,
-     0.94401,
-     0.88778,
-     0.83147,
-     0.77534,
-     0.71973,
-     0.66512,
-     0.61216,
-     0.56182
+     0.95652,
+     0.91286,
+     0.86914,
+     0.82555,
+     0.78237,
+     0.73996,
+     0.69884,
+     0.65975
     ]
    },
    "motion_ratio_damper_per_wheel": 0.681,
@@ -3812,7 +3812,7 @@
      "name": "Susp_RL_Spring",
      "pivot": [
       -1.3275,
-      0.212,
+      0.177,
       0.62988
      ],
      "joint": "aim_scale",
@@ -3825,7 +3825,7 @@
      "target": "table.DP",
      "pivot_follows": "damper body (moves with Susp_Susp_RL_Damper's rotation about its pivot)",
      "table": "spring_scale",
-     "free_length_m": 0.11925,
+     "free_length_m": 0.15425,
      "driven_by": "rocker"
     },
     {
@@ -4607,21 +4607,21 @@
      0.05457
     ],
     "spring_scale": [
-     1.34283,
-     1.28675,
-     1.23031,
-     1.17343,
-     1.11608,
-     1.05826,
+     1.26504,
+     1.22168,
+     1.17805,
+     1.13408,
+     1.08974,
+     1.04504,
      1.0,
-     0.94137,
-     0.88251,
-     0.82358,
-     0.76486,
-     0.70671,
-     0.64968,
-     0.59453,
-     0.5424
+     0.95468,
+     0.90917,
+     0.86361,
+     0.81821,
+     0.77326,
+     0.72917,
+     0.68654,
+     0.64623
     ],
     "OC": [
      [
@@ -5016,7 +5016,7 @@
      "name": "Susp_RR_Spring",
      "pivot": [
       -1.3275,
-      -0.212,
+      -0.177,
       0.62988
      ],
      "joint": "aim_scale",
@@ -5029,7 +5029,7 @@
      "target": "table.DP",
      "pivot_follows": "damper body (moves with Susp_Susp_RR_Damper's rotation about its pivot)",
      "table": "spring_scale",
-     "free_length_m": 0.11925,
+     "free_length_m": 0.15425,
      "driven_by": "rocker"
     },
     {
@@ -5811,21 +5811,21 @@
      0.05457
     ],
     "spring_scale": [
-     1.34283,
-     1.28675,
-     1.23031,
-     1.17343,
-     1.11608,
-     1.05826,
+     1.26504,
+     1.22168,
+     1.17805,
+     1.13408,
+     1.08974,
+     1.04504,
      1.0,
-     0.94137,
-     0.88251,
-     0.82358,
-     0.76486,
-     0.70671,
-     0.64968,
-     0.59453,
-     0.5424
+     0.95468,
+     0.90917,
+     0.86361,
+     0.81821,
+     0.77326,
+     0.72917,
+     0.68654,
+     0.64623
     ],
     "OC": [
      [
