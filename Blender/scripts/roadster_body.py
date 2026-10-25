@@ -115,32 +115,82 @@ def band_material(band, x):
     return 0
 
 
+# Panel crown between design rows: band -> (number of sub-rows, outward bulge in metres at mid-panel).
+# Tesla's surfaces are tensioned, gently convex panels between razor creases.
+CROWN = {3: (1, 0.006), 4: (2, 0.012), 6: (2, 0.018), 8: (3, 0.016)}
+
+
+def dense_rows():
+    """[(band, t, bulge)] - original row r is (r, 0, 0); sub-rows sit inside band b at fraction t."""
+    out = []
+    for r in range(N_ROWS):
+        out.append((r, 0.0, 0.0))
+        if r < N_ROWS - 1 and r in CROWN:
+            n, amt = CROWN[r]
+            for k in range(1, n + 1):
+                out.append((r, k / (n + 1), amt))
+    return out
+
+
+DENSE = dense_rows()
+
+
+SHARP_X = sorted({p[0] for pts in ROWS.values() for p in pts if len(p) > 3})
+
+
+def crown_fade(band, x):
+    """Crown weight: zero at the windshield-base corner (rows fold sharply there) and on the flat
+    hood-vent panel (band 8 ahead of the windshield), easing in over ~15 cm."""
+    if band == 8 and x > SHARP_X[-1] - 0.04:
+        return 0.0
+    d = min(abs(x - s) for s in SHARP_X)
+    u = min(1.0, max(0.0, (d - 0.04) / 0.15))
+    return u * u * (3 - 2 * u)
+
+
+def dense_point(x, band, t, bulge):
+    ya, za = row_at(band, x)
+    if t == 0.0:
+        return ya, za
+    yb, zb = row_at(band + 1, x)
+    y, z = ya + (yb - ya) * t, za + (zb - za) * t
+    if bulge:
+        dy, dz = yb - ya, zb - za
+        L = math.hypot(dy, dz)
+        if L > 1e-4:
+            ny, nz = dz / L, -dy / L
+            # outward = away from the section centre (y 0, z 0.6)
+            if ny * (y - 0.0) + nz * (z - 0.6) < 0:
+                ny, nz = -ny, -nz
+            s = bulge * math.sin(math.pi * t) * min(1.0, L / 0.25) * crown_fade(band, x)
+            y, z = y + ny * s, z + nz * s
+    return max(0.0, y), z
+
+
 def build_body(name="Roadster_Body"):
     mesh = bpy.data.meshes.new(name)
     obj = bpy.data.objects.new(name, mesh)
     bpy.context.collection.objects.link(obj)
     bm = bmesh.new()
+    ND = len(DENSE)
 
     grid = []
     for x in STATIONS:
         ring = []
-        for r in range(N_ROWS):
-            y, z = row_at(r, x)
+        for (band, t, bulge) in DENSE:
+            y, z = dense_point(x, band, t, bulge)
             ring.append(bm.verts.new((x, y, z)))
         grid.append(ring)
 
-    # nose and tail caps: collapsed rings on the centreline (front face / rear face)
     def cap_ring(ring, dx):
-        out = []
-        for v in ring:
-            out.append(bm.verts.new((v.co.x + dx, 0.0, v.co.z)))
-        return out
+        return [bm.verts.new((v.co.x + dx, 0.0, v.co.z)) for v in ring]
 
     # Nose: outer white "blades" (fender fronts) flank a black fascia recessed 3 cm behind them.
-    # Ring B pulls the lower rows (0-4) in to y=0.56 and back 3 cm; upper rows (hood lip) stay put.
+    # Ring B pulls the lower rows (up to row 4) in to y=0.56 and back 3 cm; upper rows (hood lip) stay put.
     nose_b = []
-    for r, v in enumerate(grid[0]):
-        if r <= 4:
+    for k, v in enumerate(grid[0]):
+        band, t, _ = DENSE[k]
+        if band < 4 or (band == 4 and t == 0.0):
             nose_b.append(bm.verts.new((v.co.x - 0.03, min(v.co.y, 0.56), v.co.z)))
         else:
             nose_b.append(v)
@@ -151,8 +201,9 @@ def build_body(name="Roadster_Body"):
     for s in range(len(rings) - 1):
         a, b = rings[s], rings[s + 1]
         xmid = 0.5 * (a[0].co.x + b[0].co.x)
-        for r in range(N_ROWS - 1):
-            quad = [a[r], b[r], b[r + 1], a[r + 1]]
+        for k in range(ND - 1):
+            band = DENSE[k][0]
+            quad = [a[k], b[k], b[k + 1], a[k + 1]]
             if len(set(quad)) < 4:
                 continue
             try:
@@ -163,22 +214,17 @@ def build_body(name="Roadster_Body"):
                 zc = sum(v.co.z for v in quad) / 4
                 f.material_index = 2 if zc < 0.44 else 0
             elif s == 1:    # blade faces between the fascia recess and the outer nose
-                f.material_index = 2 if r <= 1 else 0
+                f.material_index = 2 if band <= 1 else 0
             elif s == len(rings) - 2:   # rear face
                 zc = sum(v.co.z for v in quad) / 4
                 f.material_index = 2 if zc < 0.52 else 0
             else:
-                f.material_index = band_material(r, xmid)
+                f.material_index = band_material(band, xmid)
 
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
     bm.normal_update()
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bm.to_mesh(mesh)
     bm.free()
-
-    # sharp creases along every design row
     mesh.update()
-    for e in mesh.edges:
-        v0, v1 = mesh.vertices[e.vertices[0]].co, mesh.vertices[e.vertices[1]].co
-        if abs(v0.x - v1.x) > 1e-4 and abs(v0.y - v1.y) + abs(v0.z - v1.z) < 0.6:
-            pass
     return obj

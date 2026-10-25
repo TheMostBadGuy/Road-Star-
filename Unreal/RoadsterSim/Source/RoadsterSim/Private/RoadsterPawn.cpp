@@ -19,6 +19,14 @@
 
 using namespace Roadster;
 
+// Feature switches for profiling: 1 screens, 2 car-view capture, 4 smoke, 8 HUD (bit set = disabled)
+static TAutoConsoleVariable<int32> CVarRoadsterDisable(TEXT("roadster.Disable"), 0, TEXT("Bitmask: 1 screens, 2 car capture, 4 smoke, 8 hud"));
+int32 RoadsterDisableMask() { return CVarRoadsterDisable.GetValueOnGameThread(); }
+// Diagnostic logging: 0 off, 1 telemetry + resets (default with -autodrive), 2 verbose (autopilot, reset settle, respawn search)
+static TAutoConsoleVariable<int32> CVarRoadsterLog(TEXT("roadster.Log"), 0, TEXT("0 off, 1 telemetry, 2 verbose"));
+int32 RoadsterLogLevel() { return CVarRoadsterLog.GetValueOnGameThread(); }
+void SetRoadsterLogLevel(int32 Level) { CVarRoadsterLog->Set(Level, ECVF_SetByCommandline); }
+
 namespace
 {
 	constexpr float M2CM = 100.f;
@@ -108,7 +116,7 @@ ARoadsterPawn::ARoadsterPawn()
 	Smoke->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Smoke->SetCastShadow(false);
 	Smoke->NumCustomDataFloats = 2;
-	Smoke->SetStaticMesh(LoadAsset<UStaticMesh>(TEXT("/Engine/BasicShapes/Plane.Plane")));
+	Smoke->SetStaticMesh(LoadAsset<UStaticMesh>(TEXT("/Engine/BasicShapes/Sphere.Sphere")));
 
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(Root);
@@ -322,6 +330,9 @@ void ARoadsterPawn::ResetToTrack(bool bToStart)
 			T = FTransform(R, Hit.ImpactPoint + FVector(0, 0, 5.f));
 	}
 	PlaceAt(T, 0.f);
+	DebugAfterReset = RoadsterLogLevel() >= 2 ? 0.0 : -1.0;
+	if (RoadsterLogLevel() >= 1) UE_LOG(LogTemp, Display, TEXT("RESET at (%.1f,%.1f,%.1f) up=(%.2f,%.2f,%.2f) heave=%.0f fanrpm=%.0f"), T.GetLocation().X / 100, T.GetLocation().Y / 100, T.GetLocation().Z / 100,
+		T.GetRotation().GetUpVector().X, T.GetRotation().GetUpVector().Y, T.GetRotation().GetUpVector().Z, Sim.HeavePreload, Sim.FanRPM);
 	Sim.ResetRunTimer();
 	LapTime = 0.f;
 }
@@ -364,6 +375,18 @@ void ARoadsterPawn::StepSimulation(float DeltaSeconds)
 	{
 		Sim.Step(h, Input, Trace);
 		Accumulator -= h;
+		if (DebugAfterReset >= 0.0)
+		{
+			DebugAfterReset += h;
+			if (FMath::Fmod(DebugAfterReset, 0.02) < h)
+			{
+				const auto& W = Sim.Wheels;
+				UE_LOG(LogTemp, Display, TEXT("RDBG t=%.3f up=%.2f wz=(%.0f %.0f %.0f %.0f) c=%d body=%d fan=%.0f thr=%.0f w=(%.2f,%.2f,%.2f) z=%.3f"), DebugAfterReset, Sim.Q.Up().z,
+					W[0].Load, W[1].Load, W[2].Load, W[3].Load, Sim.T.WheelsInContact, Sim.T.bBodyContact ? 1 : 0, Sim.T.FanDownforceN, Sim.T.ThrustN,
+					Sim.W.x, Sim.W.y, Sim.W.z, Sim.BodyOriginWorld().z);
+			}
+			if (DebugAfterReset > 0.6) DebugAfterReset = -1.0;
+		}
 		++Steps;
 	}
 	if (Steps == 60) Accumulator = 0;
@@ -377,14 +400,14 @@ void ARoadsterPawn::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 	StepSimulation(DeltaSeconds);
 	UpdateVisuals(DeltaSeconds);
-	UpdateSmoke(DeltaSeconds);
+	if (!(RoadsterDisableMask() & 4)) UpdateSmoke(DeltaSeconds);
 	UpdateAudio(DeltaSeconds);
 	UpdateLaps(DeltaSeconds);
 	UpdateCamera(DeltaSeconds);
 
 	// screens at 30 Hz, the x-ray car view at 15 Hz
 	ScreenTimer += DeltaSeconds;
-	if (ScreenTimer > 1.f / 30.f)
+	if (ScreenTimer > 1.f / 30.f && !(RoadsterDisableMask() & 1))
 	{
 		ScreenTimer = 0.f;
 		if (ScreenRT) ScreenRT->UpdateResource();
@@ -392,7 +415,7 @@ void ARoadsterPawn::Tick(float DeltaSeconds)
 		if (ForwardRT_B) ForwardRT_B->UpdateResource();
 	}
 	CaptureTimer += DeltaSeconds;
-	if (CaptureTimer > 1.f / 15.f && Interface && Interface->WantsCarView())
+	if (CaptureTimer > 1.f / 15.f && Interface && Interface->WantsCarView() && !(RoadsterDisableMask() & 2))
 	{
 		CaptureTimer = 0.f;
 		const FRotator View = Interface->CarViewRotation();
@@ -616,11 +639,12 @@ void ARoadsterPawn::UpdateCamera(float DeltaSeconds)
 		const float Height = (bFar ? 300.f : 185.f) + FMath::Clamp(Look.Pitch, -30.f, 60.f) * 4.f;
 		const FVector Desired = CarPos + Back * Dist + CamUp * Height;
 		if (!bCamInit) { CamPos = Desired; CamVel = FVector::ZeroVector; bCamInit = true; }
-		// critically damped spring
-		const float W = 9.f;
-		const FVector Acc = (Desired - CamPos) * (W * W) - CamVel * (2.f * W);
-		CamVel += Acc * DeltaSeconds;
-		CamPos += CamVel * DeltaSeconds;
+		// exponential follow in the car frame: exact for any frame time (stable at low fps)
+		const float Follow = 1.f - FMath::Exp(-7.f * FMath::Min(DeltaSeconds, 0.25f));
+		const FVector Rel = CamPos - CarPos;
+		const FVector DesiredRel = Desired - CarPos;
+		CamPos = CarPos + FMath::Lerp(Rel, DesiredRel, Follow);
+		if (FVector::DistSquared(CamPos, Desired) > FMath::Square(3000.f)) CamPos = Desired;
 		const FVector Target = CarPos + CamUp * 80.f + Fwd * 120.f;
 		CamRot = LookRot((Target - CamPos).GetSafeNormal(), CamUp);
 		TargetFov = 72.f + FMath::Clamp(Speed * 0.12f, 0.f, 22.f);

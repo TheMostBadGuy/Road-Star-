@@ -1,4 +1,4 @@
-#include "RoadsterInterface.h"
+﻿#include "RoadsterInterface.h"
 #include "RoadsterPawn.h"
 #include "TrackActor.h"
 #include "Engine/Canvas.h"
@@ -148,11 +148,11 @@ void URoadsterInterface::BottomBar()
 	UI.Text(TEXT("Glass Weather"), 630, Y - 14, 24, Red, EAlign::Left, true);
 	UI.Text(TEXT("Lumen Vale"), 630, Y + 14, 22, RedDim);
 	const float Cx = 960;
-	UI.Text(TEXT("⇄"), Cx - 210, Y, 30, RedDim, EAlign::Center);
-	UI.Text(TEXT("⏮"), Cx - 105, Y, 30, Red, EAlign::Center);
+	UI.Icon(FContext::EIcon::Shuffle, Cx - 210, Y, 30, RedDim);
+	UI.Icon(FContext::EIcon::Prev, Cx - 105, Y, 30, Red);
 	UI.Rect(Cx - 12, Y - 16, 8, 32, Red); UI.Rect(Cx + 4, Y - 16, 8, 32, Red);
-	UI.Text(TEXT("⏭"), Cx + 105, Y, 30, Red, EAlign::Center);
-	UI.Text(TEXT("↻"), Cx + 210, Y, 30, RedDim, EAlign::Center);
+	UI.Icon(FContext::EIcon::Next, Cx + 105, Y, 30, Red);
+	UI.Icon(FContext::EIcon::Repeat, Cx + 210, Y, 30, RedDim);
 	UI.Text(FString::Printf(TEXT("%02d:%02d"), (int32)MusicT / 60, (int32)MusicT % 60), 1360, Y - 14, 24, Red, EAlign::Right, true);
 	UI.Text(TEXT("03:56"), 1360, Y + 14, 22, RedDim, EAlign::Right);
 	UI.Rect(0, Y + 52, FContext::VW, 2, RedFaint);
@@ -161,9 +161,9 @@ void URoadsterInterface::BottomBar()
 
 	// climate, tabs, volume
 	const float BY = 1135;
-	UI.Text(TEXT("‹"), 70, BY, 40, RedDim, EAlign::Center);
+	UI.Icon(FContext::EIcon::ChevronL, 70, BY, 40, RedDim);
 	UI.Digits(FString::Printf(TEXT("%d"), FMath::RoundToInt(bCelsius ? (ClimateF - 32) * 5 / 9 : ClimateF)), 150, BY, 44, Red, EAlign::Center);
-	UI.Text(TEXT("›"), 230, BY, 40, RedDim, EAlign::Center);
+	UI.Icon(FContext::EIcon::ChevronR, 230, BY, 40, RedDim);
 	if (UI.Clicked(40, BY - 40, 60, 80)) { ClimateF -= 1; UI.bConsumedClick = true; }
 	if (UI.Clicked(200, BY - 40, 60, 80)) { ClimateF += 1; UI.bConsumedClick = true; }
 	const float TabX0 = 560, TabW = 160;
@@ -173,10 +173,10 @@ void URoadsterInterface::BottomBar()
 		UI.Text(kTabs[i], TabX0 + TabW * i + TabW * 0.5f, BY, 28, bOn ? Red : RedDim, EAlign::Center, bOn);
 		if (UI.Clicked(TabX0 + TabW * i, BY - 40, TabW, 80)) { Tab = (ECarTab)i; Hotspot = -1; UI.bConsumedClick = true; }
 	}
-	UI.Text(TEXT("‹"), 1700, BY, 40, RedDim, EAlign::Center);
-	UI.Text(TEXT("♪"), 1770, BY, 34, Red, EAlign::Center);
+	UI.Icon(FContext::EIcon::ChevronL, 1700, BY, 40, RedDim);
+	UI.Icon(FContext::EIcon::Speaker, 1770, BY, 34, Red);
 	for (int32 i = 0; i < 3; ++i) UI.Rect(1792 + i * 9, BY - 6 - i * 5, 5, 12 + i * 10, i < Volume / 4 + 1 ? Red : RedFaint);
-	UI.Text(TEXT("›"), 1860, BY, 40, RedDim, EAlign::Center);
+	UI.Icon(FContext::EIcon::ChevronR, 1860, BY, 40, RedDim);
 	if (UI.Clicked(1670, BY - 40, 60, 80)) { Volume = FMath::Max(0, Volume - 1); UI.bConsumedClick = true; }
 	if (UI.Clicked(1830, BY - 40, 60, 80)) { Volume = FMath::Min(11, Volume + 1); UI.bConsumedClick = true; }
 }
@@ -458,7 +458,7 @@ void URoadsterInterface::PageThrusters(float X, float Y, float W, float H)
 		UI.Digits(FString::Printf(TEXT("%d"), FMath::RoundToInt(T.TankBar * kPsiPerBar)), LX + LW * 0.5f, Y + 230, 120, Red, EAlign::Center);
 		UI.Text(TEXT("PSI"), LX + LW * 0.5f, Y + 320, 24, RedDim, EAlign::Center, true);
 		UI.Bar(LX + 24, Y + 380, LW - 48, 22, T.TankPercent, Red, true);
-		UI.Text(FString::Printf(TEXT("%d%%  ·  %.1f kg N₂"), FMath::RoundToInt(T.TankPercent * 100), T.TankKg), LX + 24, Y + 440, 26, Red);
+		UI.Text(FString::Printf(TEXT("%d%%  ·  %.1f kg N2"), FMath::RoundToInt(T.TankPercent * 100), T.TankKg), LX + 24, Y + 440, 26, Red);
 		const double Impulse = T.TankKg * S.ExhaustVelocity / 1000.0;
 		UI.Text(FString::Printf(TEXT("Impulse left %.0f kN·s"), Impulse), LX + LW - 24, Y + 440, 24, Red, EAlign::Right);
 		UI.Text(FString::Printf(TEXT("Rear thrust at this pressure  %.0f kN"), S.RearThrustFullN * FMath::Clamp(T.TankBar / S.TankFullBar, 0.0, 1.0) * Set.BoostLevel / 1000.0), LX + 24, Y + 520, 24, Red);
@@ -685,7 +685,7 @@ void URoadsterInterface::TrackDashboard()
 	const float BY = 1040, BH = 110;
 	if (UI.Button(16, BY, 420, BH, TEXT("Setup"), false, 28)) bTrackSetup = true;
 	ThrusterBar(450, BY, 1040, BH);
-	if (UI.Button(1504, BY, 400, BH, TEXT("⎗  Exit Track Mode"), false, 28))
+	if (UI.Button(1504, BY, 400, BH, TEXT("Exit Track Mode"), false, 28))
 	{
 		Pawn->bTrackMode = false;
 		Pawn->Sim.Set.Dynamics = DynamicsPreset::Sport;
@@ -699,7 +699,7 @@ void URoadsterInterface::TrackSetupPage()
 	const TArray<FString> Modes = { TEXT("Auto"), TEXT("Low Drag"), TEXT("High Downforce"), TEXT("Custom") };
 	for (int32 i = 0; i < 4; ++i)
 		if (UI.Card(150 + i * 420, 110, 400, 210, Modes[i], (int32)Set.Aero == i)) Set.Aero = (AeroPreset)i;
-	UI.Text(TEXT("‹"), 70, 600, 60, RedDim, EAlign::Center);
+	UI.Icon(FContext::EIcon::ChevronL, 70, 600, 60, RedDim);
 	if (UI.Clicked(30, 520, 80, 160)) { bTrackSetup = false; UI.bConsumedClick = true; }
 
 	float RY = 340; const float LX = 150, LW = 820, RH = 92, Gap = 104;
@@ -741,7 +741,7 @@ void URoadsterInterface::TrackSetupPage()
 	const float BY = 1040, BH = 110;
 	if (UI.Button(16, BY, 420, BH, TEXT("Dashboard"), false, 28)) bTrackSetup = false;
 	ThrusterBar(450, BY, 1040, BH);
-	if (UI.Button(1504, BY, 400, BH, TEXT("⎗  Exit Track Mode"), false, 28)) { Pawn->bTrackMode = false; bTrackSetup = false; Set.Dynamics = DynamicsPreset::Sport; Set.bESC = Set.bTCS = true; }
+	if (UI.Button(1504, BY, 400, BH, TEXT("Exit Track Mode"), false, 28)) { Pawn->bTrackMode = false; bTrackSetup = false; Set.Dynamics = DynamicsPreset::Sport; Set.bESC = Set.bTCS = true; }
 }
 
 // ============================================================================ other tabs
@@ -760,7 +760,7 @@ void URoadsterInterface::ListenTab()
 void URoadsterInterface::ClimateTab()
 {
 	UI.Digits(FString::Printf(TEXT("%d"), FMath::RoundToInt(bCelsius ? (ClimateF - 32) * 5 / 9 : ClimateF)), 960, 420, 260, Red, EAlign::Center);
-	if (UI.Button(560, 360, 140, 140, TEXT("−"), false, 60)) ClimateF -= 1;
+	if (UI.Button(560, 360, 140, 140, TEXT("-"), false, 60)) ClimateF -= 1;
 	if (UI.Button(1220, 360, 140, 140, TEXT("+"), false, 60)) ClimateF += 1;
 	UI.Text(TEXT("AUTO"), 960, 640, 40, Red, EAlign::Center, true);
 	UI.Text(FString::Printf(TEXT("Cabin %s   ·   Outside %s"), *Temp((ClimateF - 32) * 5 / 9), *Temp(Pawn->Sim.S.AmbientC)), 960, 720, 28, RedDim, EAlign::Center);
@@ -822,7 +822,7 @@ void URoadsterInterface::DrawForwardDisplay(UCanvas* Canvas, int32 W, int32 H, i
 		{
 			F.Rect(1180, 400, 640, 20, RedFaint);
 			F.Rect(1180, 400, 640 * T.TankPercent, 20, Red);
-			F.Text(TEXT("N₂"), 1170, 410, 40, RedDim, EAlign::Right, true);
+			F.Text(TEXT("N2"), 1170, 410, 40, RedDim, EAlign::Right, true);
 		}
 		if (T.FanDownforceN > 500) F.Text(FString::Printf(TEXT("SUCTION %.1f kN"), T.FanDownforceN / 1000.0), 1860, 90, 42, Red, EAlign::Right, true);
 	}

@@ -12,9 +12,12 @@ using namespace Roadster;
 
 namespace { FLinearColor A(const FLinearColor& C, float Alpha) { FLinearColor O = C; O.A = Alpha; return O; } }
 
+extern int32 RoadsterDisableMask();
+
 void ARoadsterHUD::DrawHUD()
 {
 	Super::DrawHUD();
+	if (RoadsterDisableMask() & 8) return;
 	ARoadsterController* PC = Cast<ARoadsterController>(GetOwningPlayerController());
 	ARoadsterPawn* P = PC ? PC->Car() : nullptr;
 	if (!PC || !P || !Canvas) return;
@@ -30,7 +33,7 @@ void ARoadsterHUD::DrawHUD()
 	case EUIMode::Driving: DrawDriving(PC, P); break;
 	case EUIMode::Touchscreen: DrawTouchscreen(PC, P); break;
 	case EUIMode::Menu: DrawMenu(PC, P); break;
-	case EUIMode::Builder: DrawBuilder(PC, P); break;
+	case EUIMode::Builder: if (!FString(FCommandLine::Get()).Contains(TEXT("camat="))) DrawBuilder(PC, P); break;
 	case EUIMode::Help: DrawDriving(PC, P); break;
 	}
 	if (PC->ToastTime > 0.f)
@@ -54,8 +57,8 @@ void ARoadsterHUD::DrawWordmark(float CX, float CY, float H, const FLinearColor&
 // ============================================================================ title
 void ARoadsterHUD::DrawTitle(ARoadsterController* PC, ARoadsterPawn* P)
 {
-	for (int32 i = 0; i < 30; ++i) UI.Rect(0, 1200 * i / 30.f, VW, 41, A(Black, 0.15f + 0.6f * FMath::Square(i / 30.f)));
-	UI.Rect(0, 0, VW, 1200, A(Black, 0.25f));
+	UI.Gradient(0, 0, VW, 600, A(Black, 0.35f), A(Black, 0.25f));
+	UI.Gradient(0, 600, VW, 600, A(Black, 0.25f), A(Black, 0.85f));
 	DrawWordmark(VW * 0.5f, 380, 110, White);
 	UI.Text(TEXT("2ND GENERATION  ·  2026"), VW * 0.5f, 470, 28, Grey, EAlign::Center, true);
 	UI.Text(FString::Printf(TEXT("%s augment  ·  4 suction fans  ·  cold-gas thrusters"), *FString(TrimName(P->Sim.S.TrimLevel))), VW * 0.5f, 520, 26, Red, EAlign::Center);
@@ -63,7 +66,7 @@ void ARoadsterHUD::DrawTitle(ARoadsterController* PC, ARoadsterPawn* P)
 	UI.Text(TEXT("Press ENTER  or  (A)  to drive"), VW * 0.5f, 680, 36, A(White, Pulse), EAlign::Center, true);
 	if (UI.Button(VW * 0.5f - 230, 740, 460, 84, TEXT("DRIVE"), true, 32)) PC->SetMode(EUIMode::Driving);
 	if (UI.Button(VW * 0.5f - 230, 840, 460, 70, TEXT("Track Builder"), false, 26)) PC->SetMode(EUIMode::Builder);
-	DrawControls(VW * 0.5f - 640, 960);
+	DrawControls(VW * 0.5f - 700, 950);
 	UI.Text(TEXT("Specs from Tesla's 15 Oct 2026 reveal and engineering interviews. Simulation estimates where Tesla has not published figures."), VW * 0.5f, 1170, 18, Grey, EAlign::Center);
 }
 
@@ -79,9 +82,9 @@ void ARoadsterHUD::DrawControls(float X, float Y)
 	};
 	for (int32 i = 0; i < 12; ++i)
 	{
-		const float CX = X + (i % 4) * 330, CY = Y + (i / 4) * 34;
+		const float CX = X + (i % 3) * 470, CY = Y + (i / 3) * 34;
 		UI.Text(Lines[i][0], CX, CY, 20, Red, EAlign::Left, true);
-		UI.Text(Lines[i][1], CX + 90, CY, 18, Grey);
+		UI.Text(Lines[i][1], CX + 100, CY, 18, Grey);
 	}
 }
 
@@ -236,7 +239,7 @@ void ARoadsterHUD::DrawMenu(ARoadsterController* PC, ARoadsterPawn* P)
 	}
 	else
 	{
-		DrawControls(VW * 0.5f - 640, 330);
+		DrawControls(VW * 0.5f - 700, 330);
 		const TCHAR* More[] = {
 			TEXT("SPACE handbrake  ·  X hold: DRS (stow wing)  ·  Z aero preset  ·  H lights  ·  M augment  ·  N unlimited nitrogen"),
 			TEXT("B pit refill  ·  G slow motion  ·  P pause  ·  BACKSPACE start line  ·  Right mouse: look / orbit"),
@@ -289,7 +292,7 @@ void ARoadsterHUD::DrawBuilder(ARoadsterController* PC, ARoadsterPawn* P)
 	const FAdd Adds[] = {
 		{ TEXT("Straight"), ETrackPiece::Straight, 80, 0, 0, 0, 0 }, { TEXT("Turn L"), ETrackPiece::Turn, 0, -90, 60, -12, 0 },
 		{ TEXT("Turn R"), ETrackPiece::Turn, 0, 90, 60, 12, 0 }, { TEXT("Loop"), ETrackPiece::Loop, 0, 0, 15, 0, 15 },
-		{ TEXT("Corkscrew"), ETrackPiece::Corkscrew, 120, 360, 5, 0, 0 }, { TEXT("Invert"), ETrackPiece::Corkscrew, 80, 180, 4.5f, 0, 0 },
+		{ TEXT("Corkscrew"), ETrackPiece::Corkscrew, 300, 360, 5, 0, 0 }, { TEXT("Invert"), ETrackPiece::Corkscrew, 160, 180, 4.5f, 0, 0 },
 		{ TEXT("Climb"), ETrackPiece::Pitch, 40, 15, 0, 0, 0 }, { TEXT("Descend"), ETrackPiece::Pitch, 40, -15, 0, 0, 0 },
 		{ TEXT("Jump gap"), ETrackPiece::Gap, 30, 0, 0, 0, 2 }, { TEXT("Tube"), ETrackPiece::Tube, 80, 0, 7.5f, 0, 0 },
 		{ TEXT("Roll to roof"), ETrackPiece::BarrelRoll, 60, 180, 7.5f, 0, 0 }, { TEXT("Wall ride"), ETrackPiece::Turn, 0, 90, 45, 75, 0 },

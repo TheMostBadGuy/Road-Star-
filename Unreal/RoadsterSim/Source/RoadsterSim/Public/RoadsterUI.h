@@ -55,6 +55,11 @@ namespace RoadsterUI
 		void Glow(float X, float Y, float W, float H, const FLinearColor& C, float Strength = 1.f);
 		/** Perspective dot-grid "floor" behind the 3D car. */
 		void DotFloor(float X, float Y, float W, float H, float Phase = 0.f);
+		/** Vertical gradient quad (one draw, no banding). */
+		void Gradient(float X, float Y, float W, float H, const FLinearColor& Top, const FLinearColor& Bottom);
+		/** Line-drawn icons (Roboto has no media glyphs; missing glyphs hit a slow font fallback). */
+		enum class EIcon : uint8 { Prev, Next, Shuffle, Repeat, ChevronL, ChevronR, Speaker, Exit, Minus, Flag };
+		void Icon(EIcon Kind, float CX, float CY, float S, const FLinearColor& C);
 
 		// ---- widgets
 		bool Hover(float X, float Y, float W, float H) const;

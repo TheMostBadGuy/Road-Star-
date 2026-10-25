@@ -243,6 +243,73 @@ namespace RoadsterUI
 		}
 	}
 
+	void FContext::Gradient(float X, float Y, float W, float H, const FLinearColor& Top, const FLinearColor& Bottom)
+	{
+		if (!Canvas) return;
+		TArray<FCanvasUVTri> Tris;
+		FCanvasUVTri A, B;
+		A.V0_Pos = P(X, Y); A.V1_Pos = P(X + W, Y); A.V2_Pos = P(X, Y + H);
+		A.V0_Color = Top; A.V1_Color = Top; A.V2_Color = Bottom;
+		B.V0_Pos = P(X + W, Y); B.V1_Pos = P(X + W, Y + H); B.V2_Pos = P(X, Y + H);
+		B.V0_Color = Top; B.V1_Color = Bottom; B.V2_Color = Bottom;
+		Tris.Add(A); Tris.Add(B);
+		FCanvasTriangleItem Item(Tris, GWhiteTexture);
+		Item.BlendMode = SE_BLEND_Translucent;
+		Canvas->DrawItem(Item);
+	}
+
+	void FContext::Icon(EIcon Kind, float CX, float CY, float S, const FLinearColor& C)
+	{
+		const float h = S * 0.5f, T = FMath::Max(2.f, S * 0.09f);
+		switch (Kind)
+		{
+		case EIcon::Prev:
+		case EIcon::Next:
+		{
+			const float d = Kind == EIcon::Next ? 1.f : -1.f;
+			Line(CX - d * h * 0.6f, CY - h * 0.6f, CX + d * h * 0.3f, CY, C, T);
+			Line(CX + d * h * 0.3f, CY, CX - d * h * 0.6f, CY + h * 0.6f, C, T);
+			Rect(CX + d * h * 0.45f - T * 0.5f, CY - h * 0.6f, T, h * 1.2f, C);
+			break;
+		}
+		case EIcon::Shuffle:
+			Line(CX - h, CY - h * 0.5f, CX + h, CY + h * 0.5f, C, T);
+			Line(CX - h, CY + h * 0.5f, CX + h, CY - h * 0.5f, C, T);
+			break;
+		case EIcon::Repeat:
+			Circle(CX, CY, h * 0.7f, C, T, 20);
+			Line(CX + h * 0.7f, CY, CX + h * 0.9f, CY - h * 0.3f, C, T);
+			break;
+		case EIcon::ChevronL:
+		case EIcon::ChevronR:
+		{
+			const float d = Kind == EIcon::ChevronR ? 1.f : -1.f;
+			Line(CX - d * h * 0.3f, CY - h * 0.6f, CX + d * h * 0.3f, CY, C, T);
+			Line(CX + d * h * 0.3f, CY, CX - d * h * 0.3f, CY + h * 0.6f, C, T);
+			break;
+		}
+		case EIcon::Speaker:
+			Rect(CX - h * 0.8f, CY - h * 0.25f, h * 0.4f, h * 0.5f, C);
+			Line(CX - h * 0.4f, CY - h * 0.25f, CX, CY - h * 0.6f, C, T);
+			Line(CX - h * 0.4f, CY + h * 0.25f, CX, CY + h * 0.6f, C, T);
+			Line(CX, CY - h * 0.6f, CX, CY + h * 0.6f, C, T);
+			break;
+		case EIcon::Exit:
+			Outline(CX - h * 0.6f, CY - h * 0.6f, h * 0.8f, h * 1.2f, C, T);
+			Line(CX - h * 0.1f, CY, CX + h * 0.8f, CY, C, T);
+			Line(CX + h * 0.5f, CY - h * 0.3f, CX + h * 0.8f, CY, C, T);
+			Line(CX + h * 0.5f, CY + h * 0.3f, CX + h * 0.8f, CY, C, T);
+			break;
+		case EIcon::Minus:
+			Rect(CX - h * 0.6f, CY - T * 0.5f, h * 1.2f, T, C);
+			break;
+		case EIcon::Flag:
+			for (int32 r = 0; r < 3; ++r) for (int32 c = 0; c < 4; ++c)
+				Rect(CX - h + c * h * 0.5f, CY - h * 0.75f + r * h * 0.5f, h * 0.5f, h * 0.5f, ((r + c) % 2) ? C : FLinearColor(C.R, C.G, C.B, C.A * 0.25f));
+			break;
+		}
+	}
+
 	bool FContext::Hover(float X, float Y, float W, float H) const
 	{
 		return bInteract && Mouse.X >= X && Mouse.X <= X + W && Mouse.Y >= Y && Mouse.Y <= Y + H;

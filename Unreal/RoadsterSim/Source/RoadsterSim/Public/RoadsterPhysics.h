@@ -204,9 +204,9 @@ namespace Roadster
 
 		// Suction system: 4 axial fans in the rear diffuser, ~20 kW each (EXEC), sealed skirts (patent)
 		double FanCount = 4;
-		double FanMaxPressureKPa = 6.2;   // EST: enough to hold the Rocket upside down (OFFICIAL claim)
+		double FanMaxPressureKPa = 8.0;   // EST: ~1.5x the Rocket's weight - holds it on curved ceilings (OFFICIAL claim), G-meter scaled to 3.5 g (UI)
 		double FanEffectiveArea = 4.2;    // EST: hexagonal sealed floor under the pack
-		double SkirtDeployMax = 0.135;    // compliant skirts reach past ride height to the surface (patent)
+		double SkirtDeployMax = 0.22;     // compliant skirts reach past ride height to the surface (patent), and follow curved floors
 		double SkirtResidualGap = 0.006;
 		double FanSealGapScale = 0.022;   // gap at which seal efficiency halves
 		double FanMaxRPM = 16000;         // ">15,000 rpm" (EXEC)
@@ -421,7 +421,7 @@ namespace Roadster
 			const double fx = xf + S.FrontOverhang, rx = xr - S.RearOverhang;
 			NumProbes = 0;
 			auto probe = [&](double x, double y, double z, double r) { Probes[NumProbes++] = { V3(x, y, z), r }; };
-			probe(fx - 0.14, 0.00, 0.28, 0.14);
+			probe(fx - 0.14, 0.00, 0.32, 0.14);
 			probe(fx - 0.30, -0.74, 0.34, 0.16);
 			probe(fx - 0.30, 0.74, 0.34, 0.16);
 			probe(rx + 0.16, 0.00, 0.50, 0.16);
@@ -574,7 +574,8 @@ namespace Roadster
 			{
 				// Fans carry the load at low speed and hand over to the wings above ~60 mph (EXEC),
 				// but stay at Max Grip whenever the car is on a wall or ceiling.
-				const bool steep = up.z < 0.5;
+				// any tilt or roll rate (banked wall, tube roll, loop) spools the fans before grip is needed
+				const bool steep = up.z < 0.95 || std::fabs(wBody.x) > 0.25 || std::fabs(wBody.y) > 0.35;
 				const bool launchPhase = pedalDrive > 0.6 && std::fabs(vFwd) < 50.0;
 				fan = (std::fabs(vFwd) < 27.0 || steep || launchPhase || pedalBrake > 0.3 || std::fabs(T.AccelG.y) > 0.8) ? FanMode::MaxGrip : FanMode::LowDrag;
 				fw = FrontWing::HighDownforce;
@@ -941,14 +942,24 @@ namespace Roadster
 					}
 					else w.TCScale = 1.0;
 					driveT *= w.TCScale;
-					if (brakeT > 1 && std::fabs(vx) > 1.5)
+					// ABS caps friction brake + regen together (regen is blended by the stability system,
+					// otherwise lifting mid-corner would lock the driven rear wheels)
+					const double blended = brakeT + regenT;
+					if (blended > 1 && std::fabs(vx) > 1.5)
 					{
-						const double cap = R * fxAvail * 1.08;
-						w.ABSScale = Clamp(cap / brakeT, 0.15, 1.0);
-						if (w.ABSScale < 0.98) anyABS = true;
+						const double cap = R * fxAvail * 1.05;
+						double target = Clamp(cap / blended, 0.0, 1.0);
+						// slip feedback (as for TCS): a wheel already past the peak sees only the sliding force,
+						// so release below it until the wheel spins back up
+						const double slipNow = (w.Omega * R - vx) / std::max(std::fabs(vx), 1.0) * Sign(vx);
+						if (slipNow < -kPeak * 1.4)
+							target = std::min(target, Clamp(R * std::fabs(fxNow) * 0.6 / blended, 0.0, 1.0));
+						w.ABSScale = target;
+						if (w.ABSScale < 0.98 && brakeT > 1) anyABS = true;
 					}
 					else w.ABSScale = 1.0;
-					const double totalBrake = brakeT * w.ABSScale + handT + escBrake + regenT;
+					const double regenUsed = regenT * w.ABSScale;
+					const double totalBrake = brakeT * w.ABSScale + handT + escBrake + regenUsed;
 
 					// implicit wheel spin integration (backward Euler on the tire's longitudinal stiffness)
 					const double vd = std::max(std::fabs(vx), 1.0);
@@ -986,14 +997,21 @@ namespace Roadster
 					w.SurfaceTempC += h * (0.35 * slipPower + hyst - cool - 40.0 * (w.SurfaceTempC - w.CarcassTempC)) / 5000.0;
 					w.CarcassTempC += h * (40.0 * (w.SurfaceTempC - w.CarcassTempC) + 0.6 * hyst - 3.0 * (w.CarcassTempC - S.AmbientC)) / 26000.0;
 					w.Wear = std::min(1.0, w.Wear + h * slipPower * 2.0e-9);
-					w.BrakeTorque = totalBrake - regenT;
+					w.BrakeTorque = totalBrake - regenUsed;
+					regenKW += regenUsed * std::fabs(w.Omega) / 1000.0;
 				}
 				else
 				{
 					w.Alpha *= 0.98;
 					w.TCScale = 1.0; w.ABSScale = 1.0;
 					double omega = w.Omega + h * driveT / w.Inertia;
-					omega = applyBrake(omega, brakeT + handT + regenT, w.Inertia);
+					omega = applyBrake(omega, brakeT + regenT, w.Inertia);
+					// ABS also governs an unloaded wheel: it keeps it turning near road speed, so it does not
+					// touch down locked (only the handbrake may lock a wheel in the air)
+					const double roadOmega = std::fabs(vFwd) / R;
+					if (std::fabs(vFwd) > 3.0 && in.Handbrake < 0.1 && std::fabs(omega) < 0.85 * roadOmega)
+						omega = Sign(vFwd) * 0.85 * roadOmega;
+					omega = applyBrake(omega, handT, w.Inertia);
 					w.Omega = omega * (1.0 - 0.15 * h);
 					w.SurfaceTempC += h * (-(8.0 + 1.0 * speed) * (w.SurfaceTempC - S.AmbientC)) / 5000.0;
 					w.BrakeTorque = brakeT + handT;
@@ -1008,7 +1026,7 @@ namespace Roadster
 				w.BrakeTempC += h * (std::fabs(w.Omega) * w.BrakeTorque * 0.9 / 7000.0 - (0.4 + 0.02 * speed) * (w.BrakeTempC - S.AmbientC) / 60.0);
 
 				motorMechKW += driveT * w.Omega / 1000.0;
-				regenKW += regenT * std::fabs(w.Omega) / 1000.0;
+				if (!w.bContact) regenKW += regenT * std::fabs(w.Omega) / 1000.0;
 			}
 
 			// ---- body collision probes: penalty contact for bumpers, roof, sills and floor
@@ -1032,7 +1050,7 @@ namespace Roadster
 				const V3 vt = vp - n * vn;
 				const double vtl = vt.Len();
 				V3 ft;
-				if (vtl > 1e-3) ft = vt * (-std::min(0.55 * fn, 5000.0 * vtl) / vtl);
+				if (vtl > 1e-3) ft = vt * (-std::min(0.30 * fn, 5000.0 * vtl) / vtl);
 				addForceAt(n * fn + ft, c - n * Probes[p].R);
 				T.bBodyContact = true;
 			}

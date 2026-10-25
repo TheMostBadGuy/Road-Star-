@@ -285,6 +285,12 @@ def export_fbx():
             o.select_set(False)
         ob.select_set(True)
         bpy.context.view_layer.objects.active = ob
+        if not ob.data.uv_layers:
+            # carbon weave, suede and paint flakes need UVs: smart-project anything that has none
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.01, scale_to_bounds=False)
+            bpy.ops.object.mode_set(mode='OBJECT')
         bpy.ops.export_scene.fbx(filepath=os.path.join(exp, "SM_%s.fbx" % n), use_selection=True, apply_scale_options='FBX_SCALE_UNITS',
                                  axis_forward='X', axis_up='Z', object_types={'MESH'}, use_mesh_modifiers=True, mesh_smooth_type='FACE',
                                  bake_space_transform=True, add_leaf_bones=False)

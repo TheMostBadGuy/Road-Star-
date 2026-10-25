@@ -9,3 +9,7 @@ Build/
 Blender/renders/
 *.blend1
 __pycache__/
+DDC/
+Blender/renders_v*/
+Tests/*.exe
+Tests/*.obj

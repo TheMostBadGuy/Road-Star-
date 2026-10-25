@@ -9,6 +9,8 @@
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 
+extern int32 RoadsterLogLevel();
+
 namespace
 {
 	constexpr float M = 100.f;   // metres -> cm
@@ -29,10 +31,11 @@ namespace
 			UV1.Append({ wa0, wb0, wa1, wb1 });
 			const FVector Along = (a1 - a0).GetSafeNormal();
 			for (int32 k = 0; k < 4; ++k) Tan.Add(FProcMeshTangent(Along, false));
-			// front face towards the supplied normal (UE: cross(v1-v0, v2-v0) points at the viewer)
+			// front face towards the supplied normal. UE is left-handed: a triangle (v0, v1, v2) faces the viewer
+			// along cross(v2 - v0, v1 - v0), the opposite of the right-handed rule
 			const FVector G = FVector::CrossProduct(a1 - a0, b0 - a0);
-			if (FVector::DotProduct(G, na0 + nb0) >= 0) T.Append({ i, i + 2, i + 1, i + 1, i + 2, i + 3 });
-			else T.Append({ i, i + 1, i + 2, i + 1, i + 3, i + 2 });
+			if (FVector::DotProduct(G, na0 + nb0) >= 0) T.Append({ i, i + 1, i + 2, i + 1, i + 3, i + 2 });
+			else T.Append({ i, i + 2, i + 1, i + 1, i + 2, i + 3 });
 		}
 	};
 
@@ -103,23 +106,20 @@ void ATrackActor::LoadPreset(int32 Index)
 			P(E::Straight, 260, 0, 0, 0, 0, 16, false),
 			P(E::Turn, 0, 90, 90, 12),
 			P(E::Straight, 80, 0, 0, 0),
-			P(E::Loop, 0, 0, 16, 0, 16),
+			P(E::Loop, 0, 0, 24, 0, 16),
 			P(E::Straight, 90),
 			P(E::Tube, 40, 0, 7.5f),
 			P(E::BarrelRoll, 70, 180, 7.5f),
 			P(E::Tube, 160, 0, 7.5f),
-			P(E::BarrelRoll, 70, 180, 7.5f),
+			P(E::BarrelRoll, 100, -180, 7.5f),
 			P(E::Tube, 40, 0, 7.5f),
 			P(E::Straight, 60),
 			P(E::Turn, 0, 90, 70, 18),
-			P(E::Straight, 120),
-			P(E::Corkscrew, 140, 360, 5.f),
-			P(E::Straight, 80),
-			P(E::Pitch, 30, 14),
-			P(E::Pitch, 18, -14),
-			P(E::Gap, 38, 0, 0, 0, 2.5f),
-			P(E::Pitch, 30, -10),
-			P(E::Pitch, 30, 10),
+			P(E::Straight, 600),
+			// jump: 12 degree kicker, 32 m gap (frame pitches down in flight), -12 degree landing ramp flaring to level
+			P(E::Pitch, 25, 12),
+			P(E::Gap, 32, -24, 0, 0, -0.5f),
+			P(E::Pitch, 30, 12),
 			P(E::Straight, 60),
 			P(E::Turn, 0, 90, 80, 14),
 			P(E::Straight, 120),
@@ -132,11 +132,12 @@ void ATrackActor::LoadPreset(int32 Index)
 			P(E::Tube, 60, 0, 8.f),
 			P(E::BarrelRoll, 80, 180, 8.f),
 			P(E::Tube, 420, 0, 8.f),
-			P(E::BarrelRoll, 80, 180, 8.f),
+			P(E::BarrelRoll, 110, -180, 8.f),
 			P(E::Tube, 60, 0, 8.f),
 			P(E::Straight, 200),
+			// return leg runs parallel (y = 180 m) and finishes 140 m behind the start line
 			P(E::Turn, 0, 180, 90, 20),
-			P(E::Straight, 300),
+			P(E::Straight, 1290),
 			P(E::Turn, 0, 180, 90, 20),
 		};
 		break;
@@ -144,14 +145,14 @@ void ATrackActor::LoadPreset(int32 Index)
 		TrackName = TEXT("Loop Gauntlet");
 		Pieces = {
 			P(E::Straight, 300, 0, 0, 0, 0, 16, false),
-			P(E::Loop, 0, 0, 12, 0, 15),
+			P(E::Loop, 0, 0, 20, 0, 15),
 			P(E::Straight, 120),
-			P(E::Loop, 0, 0, 18, 0, 15),
+			P(E::Loop, 0, 0, 26, 0, 15),
 			P(E::Straight, 140),
-			P(E::Loop, 0, 0, 25, 0, 16),
+			P(E::Loop, 0, 0, 32, 0, 16),
 			P(E::Straight, 160),
 			P(E::Turn, 0, 180, 70, 25),
-			P(E::Straight, 700),
+			P(E::Straight, 860),
 			P(E::Turn, 0, 180, 70, 25),
 		};
 		break;
@@ -161,15 +162,13 @@ void ATrackActor::LoadPreset(int32 Index)
 			P(E::Straight, 250, 0, 0, 0, 0, 16, false),
 			P(E::Pitch, 60, 12),
 			P(E::Pitch, 60, -12),
-			P(E::Corkscrew, 90, 180, 4.5f),
-			P(E::Straight, 160),
-			P(E::Turn, 0, 90, 80, 0),
-			P(E::Straight, 100),
-			P(E::Corkscrew, 90, 180, 4.5f),
+			P(E::Corkscrew, 160, 180, 4.5f),
+			P(E::Straight, 160),                 // upside down, held by the fans
+			P(E::Corkscrew, 160, 180, 4.5f),
 			P(E::Pitch, 60, -12),
 			P(E::Pitch, 60, 12),
-			P(E::Turn, 0, 90, 80, 15),
-			P(E::Straight, 260),
+			P(E::Turn, 0, 180, 90, 18),
+			P(E::Straight, 965),
 			P(E::Turn, 0, 180, 90, 18),
 		};
 		break;
@@ -182,12 +181,16 @@ void ATrackActor::LoadPreset(int32 Index)
 		TrackName = TEXT("Corkscrew Canyon");
 		Pieces = {
 			P(E::Straight, 220, 0, 0, 0, 0, 16, false),
-			P(E::Corkscrew, 120, 360, 5.f),
+			P(E::Pitch, 70, 8),
+			P(E::Pitch, 70, -8),
+			P(E::Corkscrew, 300, 360, 5.f),
 			P(E::Turn, 0, 60, 60, 30),
-			P(E::Corkscrew, 120, -360, 5.f),
+			P(E::Corkscrew, 300, -360, 5.f),
+			P(E::Pitch, 70, -8),
+			P(E::Pitch, 70, 8),
 			P(E::Turn, 0, -60, 60, -30),
 			P(E::Pitch, 40, 20),
-			P(E::Loop, 0, 0, 15, 0, -15),
+			P(E::Loop, 0, 0, 22, 0, -15),
 			P(E::Pitch, 40, -20),
 			P(E::Turn, 0, 120, 70, 35),
 			P(E::Straight, 200),
@@ -208,12 +211,14 @@ void ATrackActor::BuildSamples()
 	float S = 0.f;
 
 	auto RoadQ = [&]() { return Qp * FQuat(FVector::ForwardVector, Roll); };
-	auto Emit = [&](int32 Piece, float Width, float TubeR, bool bWalls, bool bGap)
+	auto Emit = [&](int32 Piece, float Width, float TubeR, bool bWalls, bool bGap, bool bLift = true)
 	{
 		FTrackSample X;
 		const FQuat Qr = RoadQ();
 		X.Q = Qr;
 		X.P = (Ax - Qr.GetUpVector() * H) * M;
+		// open road: lift the deck so its low edge never sinks below the ground plane when banked or rolling
+		if (TubeR <= 0.f && bLift) X.P.Z += (Width * 0.5f + 1.45f) * FMath::Abs(FMath::Sin(Roll)) * M;
 		X.Axis = Ax * M;
 		X.QPath = Qp;
 		X.S = S; X.Width = Width; X.TubeR = TubeR; X.bWalls = bWalls; X.bGap = bGap; X.Piece = Piece;
@@ -244,7 +249,8 @@ void ATrackActor::BuildSamples()
 		{
 		case ETrackPiece::Turn: L = FMath::Max(5.f, FMath::Abs(FMath::DegreesToRadians(Pc.Angle)) * Pc.Radius); YawRate = FMath::DegreesToRadians(Pc.Angle) / L; break;
 		case ETrackPiece::Loop: L = 2 * PI * FMath::Max(5.f, Pc.Radius); PitchRate = 2 * PI / L; break;
-		case ETrackPiece::Pitch: PitchRate = FMath::DegreesToRadians(Pc.Angle) / L; break;
+		case ETrackPiece::Pitch:
+		case ETrackPiece::Gap: PitchRate = FMath::DegreesToRadians(Pc.Angle) / L; break;   // a gap may pitch the frame in flight
 		case ETrackPiece::Corkscrew:
 		case ETrackPiece::BarrelRoll: RollRate = FMath::DegreesToRadians(Pc.Angle) / L; break;
 		default: break;
@@ -264,7 +270,12 @@ void ATrackActor::BuildSamples()
 			auto Rotate = [&](float D)
 			{
 				if (YawRate != 0) Qp = Qp * FQuat(FVector::UpVector, YawRate * D);
-				if (PitchRate != 0) Qp = Qp * FQuat(FVector::RightVector, -PitchRate * D);   // nose up
+				if (PitchRate != 0)
+				{
+					// loops are clothoid "teardrops": curvature 2 sin^2(pi t) x mean, zero at entry/exit, tightest at the top
+					const float Shape = Pc.Type == ETrackPiece::Loop ? 0.4f + 1.2f * FMath::Square(FMath::Sin(PI * (k - 0.5f) / N)) : 1.f;
+					Qp = Qp * FQuat(FVector::RightVector, -PitchRate * Shape * D);   // nose up
+				}
 				Qp.Normalize();
 			};
 			Rotate(Ds * 0.5f);
@@ -272,10 +283,24 @@ void ATrackActor::BuildSamples()
 			if (Pc.Type == ETrackPiece::Loop) Ax += LoopSide * (Pc.Offset / N);
 			if (Pc.Type == ETrackPiece::Gap) Ax.Z -= Pc.Offset / N;
 			Rotate(Ds * 0.5f);
-			if (RollRate != 0) Roll += RollRate * Ds;
-			else if (bBanks) Roll = FMath::Lerp(StartRoll, TargetRoll, Smooth(t));
+			// roll pieces ease in and out (rate 2 sin^2), so the road never kinks at the joins
+			if (RollRate != 0)
+			{
+				const float tm = (k - 0.5f) / N;
+				// tube rolls: 2 sin^2 (the cylinder never twists under the car); open corkscrews: trapezoid with
+				// short 15% ramps, keeping the twist between the axles within the suspension's articulation
+				const float Shape = Pc.Type == ETrackPiece::BarrelRoll ? 2.f * FMath::Square(FMath::Sin(PI * tm))
+					: FMath::Clamp(FMath::Min(tm, 1.f - tm) / 0.15f, 0.f, 1.f) / 0.85f;
+				Roll += RollRate * Shape * Ds;
+			}
+			else if (bBanks)
+			{
+				// banking changes over the first 50 m (or half of a short piece), then holds
+				const float TransLen = FMath::Min(L * 0.5f, 50.f);
+				Roll = FMath::Lerp(StartRoll, TargetRoll, Smooth(FMath::Clamp(t * L / TransLen, 0.f, 1.f)));
+			}
 			S += Ds;
-			Emit(i, Pc.Width, bTubeLike ? Pc.Radius : 0.f, Pc.bWalls, Pc.Type == ETrackPiece::Gap);
+			Emit(i, Pc.Width, bTubeLike ? Pc.Radius : 0.f, Pc.bWalls, Pc.Type == ETrackPiece::Gap, Pc.Type != ETrackPiece::Corkscrew);
 		}
 	}
 
@@ -310,6 +335,20 @@ void ATrackActor::BuildSamples()
 		}
 	}
 
+	// Open road (corkscrews, gaps, connector): align each frame's forward with the true path tangent
+	// (a corkscrew's road moves sideways around its axis, so the axis direction is not the road direction)
+	for (int32 i = 1; i + 1 < Samples.Num(); ++i)
+	{
+		FTrackSample& Sm = Samples[i];
+		if (Sm.TubeR > 0.f || Samples[i - 1].TubeR > 0.f || Samples[i + 1].TubeR > 0.f) continue;
+		const FVector Tan = (Samples[i + 1].P - Samples[i - 1].P).GetSafeNormal();
+		if (Tan.IsNearlyZero()) continue;
+		const FVector Up = Sm.Q.GetUpVector();
+		const FVector Right = FVector::CrossProduct(Up, Tan).GetSafeNormal();
+		const FVector NewUp = FVector::CrossProduct(Tan, Right).GetSafeNormal();
+		Sm.Q = FRotationMatrix::MakeFromXZ(Tan, NewUp).ToQuat();
+	}
+
 	Centerline.Reset();
 	const FTransform T = GetActorTransform();
 	for (int32 i = 0; i < Samples.Num(); i += 4) Centerline.Add(T.TransformPosition(Samples[i].P));
@@ -326,7 +365,9 @@ void ATrackActor::BuildMesh()
 		const FTrackSample& A1 = Samples[i + 1];
 		if (A1.bGap) continue;
 		const float W2 = A1.Width * 0.5f;
-		if (A1.TubeR <= 0.f && A0.TubeR <= 0.f)
+		// segments that touch an open sample stay open road: a tube ring must never be built from an
+		// open-road axis (that skews the first ring into a ramp across the road at the portal)
+		if (A1.TubeR <= 0.f || A0.TubeR <= 0.f)
 		{
 			// ---- open road: deck, curbs, barriers or sides, underside
 			auto L = [&](const FTrackSample& Sm, float y, float z) { return Sm.P + Sm.Q.RotateVector(FVector(0, y, z) * M); };
@@ -466,16 +507,20 @@ void ATrackActor::BuildSupportsAndLights()
 		if (Sm.TubeR > 0.f && Sm.S >= NextLight && Lights.Num() < 64)
 		{
 			UPointLightComponent* L = NewObject<UPointLightComponent>(this);
+			L->SetMobility(EComponentMobility::Movable);   // runtime light: nothing is baked
 			L->SetupAttachment(Mesh);
-			L->RegisterComponent();
 			L->SetRelativeLocation(Sm.Axis);
+			L->RegisterComponent();
 			L->SetIntensityUnits(ELightUnits::Candelas);
-			L->SetIntensity(180.f);
-			L->SetAttenuationRadius(Sm.TubeR * M * 3.f);
+			// matched to the open-air level (sun 10 lux): ~25 lux on the tube wall, so with the exposure range of
+			// the level's post-process volume the tube reads at about the same exposure as outside
+			L->SetIntensity(1500.f);
 			L->SetLightColor(FLinearColor(0.85f, 0.92f, 1.f));
 			L->SetCastShadows(false);
+			L->SetVolumetricScatteringIntensity(0.f);   // per-light volumetric fog scattering is costly
+			L->SetAttenuationRadius(FMath::Max(Sm.TubeR * M * 3.2f, 2400.f));   // overlaps the 30 m spacing
 			Lights.Add(L);
-			NextLight = Sm.S + 35.f;
+			NextLight = Sm.S + 30.f;
 		}
 	}
 }
@@ -486,6 +531,8 @@ void ATrackActor::Rebuild()
 	BuildMesh();
 	BuildSupportsAndLights();
 	bHavePrev = false;
+	if (RoadsterLogLevel() >= 1)
+		UE_LOG(LogTemp, Display, TEXT("TRACK %s: %d samples, %d sections, %d tube lights"), *TrackName, Samples.Num(), Mesh->GetNumSections(), Lights.Num());
 }
 
 // ============================================================================ queries
@@ -520,11 +567,15 @@ bool ATrackActor::FindNearestFrame(const FVector& WorldPos, FTransform& Out) con
 		if (D < BestD) { BestD = D; Best = i; }
 	}
 	if (Best < 0 || BestD > FMath::Square(150.f * M)) return false;
-	// step back a little so the car is not dropped on a jump lip
+	// step back to an upright, solid stretch of road (never respawn on a ceiling, wall or jump lip)
+	const int32 Found = Best;
 	Best = FMath::Max(0, Best - 5);
-	while (Best > 0 && Samples[Best].bGap) --Best;
+	while (Best > 0 && (Samples[Best].bGap || Samples[Best].Q.GetUpVector().Z < 0.85f) && Samples[Found].S - Samples[Best].S < 600.f) --Best;
+	if (Samples[Best].Q.GetUpVector().Z < 0.85f) return GetStartFrame(Out);
 	const FTrackSample& Sm = Samples[Best];
 	Out = FTransform(Sm.Q, Sm.P + Sm.Q.GetUpVector() * 3.f) * GetActorTransform();
+	if (RoadsterLogLevel() >= 2) UE_LOG(LogTemp, Display, TEXT("NEAREST found=%d best=%d piece=%d S=%.1f P=(%.1f,%.1f,%.1f) Axis=(%.1f,%.1f,%.1f) TubeR=%.1f up=(%.2f,%.2f,%.2f)"), Found, Best, Sm.Piece, Sm.S,
+		Sm.P.X / 100, Sm.P.Y / 100, Sm.P.Z / 100, Sm.Axis.X / 100, Sm.Axis.Y / 100, Sm.Axis.Z / 100, Sm.TubeR, Sm.Q.GetUpVector().X, Sm.Q.GetUpVector().Y, Sm.Q.GetUpVector().Z);
 	return true;
 }
 

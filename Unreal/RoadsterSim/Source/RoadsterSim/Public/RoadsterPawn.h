@@ -114,6 +114,7 @@ protected:
 
 private:
 	double Accumulator = 0.0;
+	double DebugAfterReset = -1.0;
 	FVector CamPos = FVector::ZeroVector;
 	FVector CamVel = FVector::ZeroVector;
 	FVector CamUp = FVector::UpVector;

@@ -39,7 +39,18 @@ public:
 	FString Toast; float ToastTime = 0.f;
 	void ShowToast(const FString& S, float Secs = 2.5f) { Toast = S; ToastTime = Secs; }
 
+	/** Autopilot: follows the track centreline (testing + attract/demo mode). */
+	bool bAutopilot = false;
+	float AutoSpeedScale = 1.f;
+
 private:
+	int32 AutoIndex = 0;
+	TArray<float> ShotTimes;
+	float PlayTime = 0.f;
+	int32 ShotIndex = 0;
+	float TelemetryTimer = 0.f;
+	void AutopilotInput(float Dt);
+	void LogTelemetry(float Dt);
 	float Steer = 0.f, Throttle = 0.f, Brake = 0.f;
 	float BrakeHoldAtRest = 0.f;
 	bool bReverseLatch = false;
