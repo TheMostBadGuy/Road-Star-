@@ -37,6 +37,7 @@ def materials():
         "LightWhite": mat("M_Light_White", (1, 1, 1), emit=((1, 0.97, 0.92), 30)),
         "LightRed": mat("M_Light_Red", (0.5, 0.0, 0.0), emit=((1, 0.02, 0.01), 40)),
         "Amber": mat("M_Light_Amber", (0.6, 0.25, 0.0), emit=((1, 0.4, 0.0), 6)),
+        "LightBlue": mat("M_Light_Blue", (0.0, 0.08, 0.4), emit=((0.15, 0.45, 1.0), 12)),   # charge-port ring
         "Carbon": mat("M_Carbon", (0.025, 0.025, 0.028), rough=0.25, coat=1.0),
         "Gold": mat("M_Nozzle_Gold", (0.85, 0.62, 0.32), rough=0.2, metal=1.0),
         "PlateSilver": mat("M_Plate_Silver", (0.70, 0.70, 0.70), rough=0.35, metal=0.9),

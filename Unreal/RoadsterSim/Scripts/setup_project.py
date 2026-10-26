@@ -308,7 +308,14 @@ def build_screen():
     m = fresh_material("M_Screen")
     m.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     t = tex(m, "/Engine/EngineResources/Black", -700, 0, None, "ScreenTex")
-    prop(mul(m, t, scalar(m, "Brightness", 3.0, -700, 200), -400, 50), MP.MP_EMISSIVE_COLOR, "")
+    # Maintain a legible cockpit display through daylight/tunnel eye adaptation.
+    color = mul(m, t, scalar(m, "Brightness", 0.9, -700, 200), -400, 50)
+    adaptive = E(m, unreal.MaterialExpressionEyeAdaptationInverse, -150, 50)
+    inputs = MEL.get_material_expression_input_names(adaptive)
+    light_pin = next((p for p in inputs if "light" in p.lower()), inputs[0])
+    if not MEL.connect_material_expressions(color, "", adaptive, light_pin):
+        raise RuntimeError("Could not connect adaptive screen input: " + str(inputs))
+    prop(adaptive, MP.MP_EMISSIVE_COLOR, "")
     finish(m)
     return m
 
@@ -496,11 +503,29 @@ def build_all_materials():
     I["M_Light_Red"] = instance("MI_LightRed", master, {"Intensity": 60.0, "Roughness": 0.1}, {"BaseColor": (0.5, 0.0, 0.0), "Emissive": (1.0, 0.015, 0.008)})
     I["M_Light_Amber"] = instance("MI_LightAmber", master, {"Intensity": 12.0}, {"BaseColor": (0.6, 0.25, 0.0), "Emissive": (1.0, 0.35, 0.0)})
     I["M_Interior_RedAmbient"] = instance("MI_RedAmbient", master, {"Intensity": 25.0}, {"BaseColor": (0.3, 0.0, 0.0), "Emissive": (1.0, 0.03, 0.02)})
-    I["M_Glass_Gold"] = glass
+    # "Gold Glazed" canopy: from outside it reads as dark, reflective bronze (Tesla photos), not clear glass
+    I["M_Glass_Gold"] = instance("MI_GlassGold", glass, {"Opacity": 0.86, "Metallic": 0.72}, {"Tint": (0.20, 0.12, 0.045)})
     I["M_Glass_Rear"] = instance("MI_GlassRear", glass, {"Opacity": 0.88}, {"Tint": (0.05, 0.035, 0.02)})
     I["M_Carbon"] = carbon
-    I["M_Tire_Front"] = instance("MI_TireFront", tire, textures={"TextTex": "/Game/Textures/T_TireText_Front"})
-    I["M_Tire_Rear"] = instance("MI_TireRear", tire, textures={"TextTex": "/Game/Textures/T_TireText_Rear"})
+    # tyres: the detailed P Zero Trofeo R meshes carry their lettering as geometry (own slot), so the
+    # rubber is plain with a fine detail normal (the old texture-text material would print it twice)
+    rubber = instance("MI_TireRubber", master, {"Roughness": 0.86, "NormalStrength": 0.35, "NormalTiling": 40.0}, {"BaseColor": (0.011, 0.011, 0.012)})
+    I["M_Tire_Front"] = rubber
+    I["M_Tire_Rear"] = rubber
+    I["M_Tire_Lettering"] = instance("MI_TireLettering", master, {"Roughness": 0.7}, {"BaseColor": lin((222, 222, 220))})
+    # brakes and suspension (roadster_wheels)
+    I["M_Caliper_Gold"] = instance("MI_CaliperGold", master, {"Roughness": 0.22, "Metallic": 0.75, "ClearCoat": 1.0, "ClearCoatRoughness": 0.04}, {"BaseColor": lin((214, 162, 78))})
+    I["M_Susp_Forged"] = instance("MI_SuspForged", master, {"Roughness": 0.42, "Metallic": 1.0}, {"BaseColor": lin((118, 120, 124))})
+    I["M_Chrome"] = instance("MI_Chrome", master, {"Roughness": 0.05, "Metallic": 1.0}, {"BaseColor": lin((238, 238, 242))})
+    I["M_Stainless"] = instance("MI_Stainless", master, {"Roughness": 0.22, "Metallic": 1.0}, {"BaseColor": lin((172, 178, 184))})
+    I["M_COPV_Filament"] = carbon
+    # cabin details (roadster_interior)
+    I["M_Interior_UltrawhitePerf"] = instance("MI_UltrawhitePerf", master, {"Roughness": 0.55, "NormalStrength": 1.0, "NormalTiling": 15.625},
+                                              {"BaseColor": lin((236, 236, 232))}, {"NormalTex": "/Game/Textures/T_SeatPerf_N"})
+    I["M_Interior_PerfDot"] = instance("MI_PerfDot", master, {"Roughness": 0.8}, {"BaseColor": lin((112, 112, 114))})
+    I["M_Interior_Stitch"] = instance("MI_Stitch", master, {"Roughness": 0.75}, {"BaseColor": lin((150, 150, 155))})
+    I["M_Interior_Webbing"] = instance("MI_Webbing", master, {"Roughness": 0.85, "NormalStrength": 0.4, "NormalTiling": 60.0}, {"BaseColor": (0.012, 0.012, 0.013)})
+    I["M_Interior_Glyph"] = instance("MI_Glyph", master, {"Intensity": 3.0, "Roughness": 0.4}, {"BaseColor": (0.9, 0.9, 0.9), "Emissive": (1.0, 1.0, 1.0)})
     screen = unreal.load_asset("/Game/Materials/M_Screen")
     I["M_Screen_Main"] = screen
     I["M_Screen_Forward"] = screen
@@ -647,4 +672,11 @@ if __name__ == "__main__":
             f.write("\n".join(LOG) + "\nFAILED\n" + traceback.format_exc())
         raise
     finally:
-        unreal.SystemLibrary.quit_editor()
+        # Let startup and outstanding asset work return to the editor before teardown.
+        import time
+        _quit_at = time.monotonic() + 12.0
+        def _settled_exit(delta):
+            if time.monotonic() >= _quit_at:
+                unreal.unregister_slate_post_tick_callback(_quit_handle)
+                unreal.SystemLibrary.quit_editor()
+        _quit_handle = unreal.register_slate_post_tick_callback(_settled_exit)

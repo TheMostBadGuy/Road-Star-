@@ -1,0 +1,12 @@
+{
+  "checks":61,
+  "failures":0,
+  "pass":true,
+  "circular_speed_400km_mps":7672.59864838501,
+  "coast_max_relative_energy_drift":5.61772850460329e-14,
+  "coast_max_relative_angular_momentum_drift":2.80886425230165e-14,
+  "coast_position_closure_m":8.81747408628989e-05,
+  "coast_velocity_closure_mps":9.99145275478466e-08,
+  "coarse_refinement_position_error_ratio":17.9633120746902,
+  "max_heldout_atmosphere_relative_error":0.0289908985461427
+}

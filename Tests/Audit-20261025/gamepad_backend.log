@@ -1,0 +1,4 @@
+GamepadBackendHarness.cpp
+Loaded official SDL 3004018 from E:\TeslaRoadsterSim\Tests\..\Unreal\RoadsterSim\ThirdParty\SDL3\lib\x64\SDL3.dll
+Physical devices present before synthetic tests: 0 (friendly names only)
+PASS 85 checks: actual SDL load, synthetic Sony mapping, axes/triggers, cached edges, focus, hotplug, XInput exclusion, rumble, shutdown.

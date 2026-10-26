@@ -220,7 +220,7 @@ def main():
     # 4. top cutaway of the plumbing
     top = cam("CamTop", (-0.20, 0.0, 10.0), (0, 0, 0), ortho=4.9)
     render(sc, top, "top_plumbing", 2000, 900, show_only=names_parts | {w.name for w in whl})
-    topr = cam("CamTopR", (-1.55, 0.0, 10.0), (0, 0, 0), ortho=2.0)
+    topr = cam("CamTopR", (-1.42, 0.0, 10.0), (0, 0, 0), ortho=2.0)
     render(sc, topr, "top_rear_detail", 1600, 1600, show_only=names_parts)
     # 5. details
     fx = cam("CamFan", (-3.25, -0.62, 0.78), (0, 0, 0), lens=60)
@@ -235,9 +235,12 @@ def main():
     cv = cam("CamCOPV", (1.5, -2.6, 1.6), (0, 0, 0), lens=40)
     look_at(cv, (-0.45, -0.20, 0.55))
     render(sc, cv, "copv_overview", 1600, 1000, show_only={"COPV_Rocket", "COPV_Trunk", "ColdGas_Plumbing", "Thrusters_Rocket", "Thrusters_Rear", "Fan_Box"})
-    pl = cam("CamPlumb", (-1.05, -1.05, 1.25), (0, 0, 0), lens=40)
-    look_at(pl, (-1.62, 0.05, 0.60))
+    pl = cam("CamPlumb", (-0.55, -1.20, 1.45), (0, 0, 0), lens=35)
+    look_at(pl, (-1.25, 0.0, 0.72))
     render(sc, pl, "plumbing_detail", 1600, 1000, show_only={"ColdGas_Plumbing", "Thrusters_Rear", "COPV_Trunk", "Thrusters_Rocket", "COPV_Rocket"})
+    pb = cam("CamBay", (-2.35, 0.95, 1.30), (0, 0, 0), lens=32)
+    look_at(pb, (-1.15, 0.0, 0.62))
+    render(sc, pb, "trunk_bay", 1600, 1000, show_only=names_parts)
     if "--blend" in argv:
         bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, "coldgas_preview.blend"))
 

@@ -2,6 +2,7 @@
 #include "RoadsterRig.h"
 #include "SuspensionRig.h"
 #include "RoadsterInterface.h"
+#include "RoadsterController.h"
 #include "TrackActor.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
@@ -36,6 +37,18 @@ namespace
 	FVector B2U(double x, double y, double z) { return FVector(x * M2CM, -y * M2CM, z * M2CM); }
 	FVector ToU(const V3& v) { return FVector(v.x, v.y, v.z) * M2CM; }
 	V3 ToM(const FVector& v) { return V3(v.X / M2CM, v.Y / M2CM, v.Z / M2CM); }
+	void ApplyRigNozzles(Spec& S)
+	{
+		const char* Names[] = { "Rear_R2", "Rear_R1", "Rear_L1", "Rear_L2", "Lift_FL", "Lift_FR", "Lift_RL", "Lift_RR", "Yaw_L_firing", "Yaw_R_firing" };
+		for (int32 i = 0; i < 10; ++i)
+			if (const auto* N = RoadsterRig::FindNozzle(Names[i]))
+			{
+				const V3 P(N->X, -N->Y, N->Z);
+				if (i < 4) S.RearNozzlePos[i] = P;
+				else if (i < 8) S.LiftNozzlePos[i - 4] = P;
+				else S.YawNozzlePos[i - 8] = P;
+			}
+	}
 	FQuat ToUQ(const Quat& q) { return FQuat(q.x, q.y, q.z, q.w); }
 	Quat ToMQ(const FQuat& q) { return Quat(q.W, q.X, q.Y, q.Z); }
 
@@ -61,6 +74,9 @@ ARoadsterPawn::ARoadsterPawn()
 	ThrustersRear = AddPart(TEXT("Thrusters_Rear"));
 	ThrustersRocket = AddPart(TEXT("Thrusters_Rocket"));
 	COPV = AddPart(TEXT("COPV_Rocket"));
+	COPVTrunk = AddPart(TEXT("COPV_Trunk"));          // 200 L vessel (Thrust and Rocket)
+	ColdGasPlumbing = AddPart(TEXT("ColdGas_Plumbing")); // regulator, isolation valves, lines, transducers
+	FanBox = AddPart(TEXT("Fan_Box"));               // carbon suction box with stators and motors
 	SeatPassenger = AddPart(TEXT("Seat_Passenger"));
 	ScreenDisplay = AddPart(TEXT("Screen_Display"));
 	ForwardA = AddPart(TEXT("Forward_Display_A"));
@@ -116,7 +132,8 @@ ARoadsterPawn::ARoadsterPawn()
 		return P;
 	};
 	// plumes sit at the same nozzle exits the physics pushes at (Spec, body frame: x fwd, y right, z up, metres)
-	const Spec NozzleSpec;
+	ApplyRigNozzles(Sim.S);
+	const Spec& NozzleSpec = Sim.S;
 	for (int32 k = 0; k < 4; ++k)   // rear bank, pointing backwards (cone apex at the nozzle)
 		PlumesRear.Add(MakePlume(*FString::Printf(TEXT("PlumeRear%d"), k), ToU(NozzleSpec.RearNozzlePos[k]) - FVector(5, 0, 0), FRotator(90.f, 0, 0)));
 	for (int32 k = 0; k < 4; ++k)   // corner lift nozzles, pointing down
@@ -144,6 +161,15 @@ ARoadsterPawn::ARoadsterPawn()
 	Camera->PostProcessSettings.SceneFringeIntensity = 0.f;
 	Camera->PostProcessSettings.bOverride_VignetteIntensity = true;
 	Camera->PostProcessSettings.VignetteIntensity = 0.32f;
+	EarthVisual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("EarthVisual"));
+	EarthVisual->SetupAttachment(Root);
+	EarthVisual->SetUsingAbsoluteLocation(true);
+	EarthVisual->SetUsingAbsoluteRotation(true);
+	EarthVisual->SetUsingAbsoluteScale(true);
+	EarthVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	EarthVisual->SetCastShadow(false);
+	EarthVisual->SetVisibleInRayTracing(false);
+	EarthVisual->SetVisibility(false);
 
 	CarCapture = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("CarCapture"));
 	CarCapture->SetupAttachment(Root);
@@ -198,6 +224,8 @@ ARoadsterPawn::ARoadsterPawn()
 	AudioThrust = MakeAudio(TEXT("AudioThrust"), TEXT("S_Thrust"));
 	AudioWind = MakeAudio(TEXT("AudioWind"), TEXT("S_Wind"));
 	AudioTire = MakeAudio(TEXT("AudioTire"), TEXT("S_Tire"));
+
+	// [TEAM HOOKUP: constructor] overlay / VFX components are created here (Coordination/TEAM.md).
 }
 
 UStaticMeshComponent* ARoadsterPawn::AddPart(const TCHAR* MeshName, USceneComponent* Parent, FName Name)
@@ -248,7 +276,7 @@ void ARoadsterPawn::BeginPlay()
 	CarCapture->PostProcessSettings.bOverride_AutoExposureMethod = true;
 	CarCapture->PostProcessSettings.AutoExposureMethod = EAutoExposureMethod::AEM_Manual;
 	CarCapture->PostProcessSettings.bOverride_AutoExposureBias = true;
-	CarCapture->PostProcessSettings.AutoExposureBias = 11.f;
+	CarCapture->PostProcessSettings.AutoExposureBias = -2.f;
 	TArray<UActorComponent*> Comps;
 	GetComponents(UStaticMeshComponent::StaticClass(), Comps);
 	for (UActorComponent* C : Comps)
@@ -288,6 +316,9 @@ void ARoadsterPawn::BeginPlay()
 		if (A && A->Sound) { A->SetVolumeMultiplier(0.f); A->Play(); }
 
 	ResetToTrack(true);
+	EarthVisual->SetStaticMesh(LoadAsset<UStaticMesh>(TEXT("/Game/Environment/Earth20261025/SM_EarthUnit.SM_EarthUnit")));
+	EarthVisual->SetWorldLocation(FVector(0, 0, -Earth::MeanRadiusM * 100.0));
+	EarthVisual->SetWorldScale3D(FVector(Earth::MeanRadiusM));
 }
 
 void ARoadsterPawn::SetTrim(Trim NewTrim)
@@ -300,11 +331,29 @@ void ARoadsterPawn::SetTrim(Trim NewTrim)
 	ApplyTrimVisibility();
 }
 
+void ARoadsterPawn::StartRoadstarScenario(int32 Scenario)
+{
+	SetTrim(Trim::Rocket);
+	Sim.Set.bRoadstarMode = true;
+	Sim.Set.bHoverHold = false;
+	Sim.Set.bFlightAssist = false;
+	Sim.Set.bThrustersArmed = false;
+	Input = Inputs();
+	const double Altitude = Scenario == 1 ? 100000.0 : 400000.0;
+	PlaceAt(FTransform(FQuat::Identity, FVector(0, 0, Altitude * 100.0)));
+	Sim.V = Scenario == 1 ? V3(1200, 0, 300) : V3(std::sqrt(Earth::MuM3PerS2 / (Earth::MeanRadiusM + Altitude)), 0, 0);
+	Sim.Orbit = Earth::OrbitalElements({Sim.X.x, Sim.X.y, Sim.X.z}, {Sim.V.x, Sim.V.y, Sim.V.z});
+	CameraMode = ERoadsterCamera::ChaseFar;
+	Sim.ResetRunTimer();
+}
+
 void ARoadsterPawn::ApplyTrimVisibility()
 {
 	ThrustersRear->SetVisibility(Sim.S.bHasRearThrusters);
 	ThrustersRocket->SetVisibility(Sim.S.bHasLiftThrusters);
 	COPV->SetVisibility(Sim.S.TrimLevel == Trim::Rocket);
+	COPVTrunk->SetVisibility(Sim.S.TankVolumeL > 0);
+	ColdGasPlumbing->SetVisibility(Sim.S.TankVolumeL > 0);
 	SeatPassenger->SetVisibility(Sim.S.Seats == 2);
 }
 
@@ -342,6 +391,10 @@ void ARoadsterPawn::SetXRay(bool bOn)
 		}
 	}
 	if (!bOn) XRaySaved.Reset();
+	// The white car is the brightest thing in most frames; once it turns into a ghost the histogram exposure
+	// would brighten the whole scene by several stops. Hold daylight exposure while the engineering view is on.
+	Camera->PostProcessSettings.bOverride_AutoExposureMinBrightness = bOn;
+	Camera->PostProcessSettings.AutoExposureMinBrightness = 12.f;   // EV100 (extended luminance range)
 }
 
 FTransform ARoadsterPawn::BodyTransform() const
@@ -397,7 +450,8 @@ Roadster::TraceFn ARoadsterPawn::MakeTrace()
 	FCollisionObjectQueryParams Obj;
 	Obj.AddObjectTypesToQuery(ECC_WorldStatic);
 	Obj.AddObjectTypesToQuery(ECC_WorldDynamic);
-	return [W, Params, Obj](const V3& s, const V3& d, double len, double r) -> Hit
+	const bool bPlanet = Sim.Set.bRoadstarMode;
+	return [W, Params, Obj, bPlanet](const V3& s, const V3& d, double len, double r) -> Hit
 	{
 		Hit Out;
 		const FVector Start = ToU(s);
@@ -406,7 +460,28 @@ Roadster::TraceFn ARoadsterPawn::MakeTrace()
 		bool bHit;
 		if (r <= 1e-4) bHit = W->LineTraceSingleByObjectType(H, Start, End, Obj, Params);
 		else bHit = W->SweepSingleByObjectType(H, Start, End, FQuat::Identity, Obj, FCollisionShape::MakeSphere(r * M2CM), Params);
-		if (!bHit || H.bStartPenetrating) return Out;
+		if (!bHit || H.bStartPenetrating)
+		{
+			if (bPlanet)
+			{
+				const Earth::Vec3 P = Earth::EarthCenteredPosition({s.x, s.y, s.z});
+				const Earth::Vec3 D(d.x, d.y, d.z);
+				const double R = Earth::MeanRadiusM + r;
+				const double B = Earth::Dot(P, D), C = Earth::Dot(P, P) - R * R;
+				const double Disc = B * B - C;
+				if (C >= 0 && Disc >= 0)
+				{
+					const double T = -B - std::sqrt(Disc);
+					if (T >= 0 && T <= len)
+					{
+						const Earth::Vec3 N = (P + D * T) / R;
+						Out.bHit = true; Out.CenterDist = T; Out.Normal = V3(N.X, N.Y, N.Z);
+						Out.Point = s + d * T - Out.Normal * r; Out.Dist = (Out.Point - s).Dot(d);
+					}
+				}
+			}
+			return Out;
+		}
 		Out.bHit = true;
 		Out.CenterDist = H.Distance / M2CM;
 		Out.Point = ToM(H.ImpactPoint);
@@ -422,6 +497,7 @@ void ARoadsterPawn::StepSimulation(float DeltaSeconds)
 	const double h = 0.001;
 	Accumulator += FMath::Min(DeltaSeconds, 0.05f) * TimeScale;
 	const TraceFn Trace = MakeTrace();
+	if (const auto* PC = Cast<ARoadsterController>(GetController())) Input.bPilotStunt = PC->IsStuntActive() || PC->IsReplaying();
 	int32 Steps = 0;
 	while (Accumulator >= h && Steps < 60)
 	{
@@ -443,7 +519,7 @@ void ARoadsterPawn::StepSimulation(float DeltaSeconds)
 	}
 	if (Steps == 60) Accumulator = 0;
 	// fell out of the world
-	if (Sim.X.z < -200.0) ResetToTrack(false);
+	if (!Sim.Set.bRoadstarMode && Sim.X.z < -200.0) ResetToTrack(false);
 	SetActorTransform(BodyTransform(), false, nullptr, ETeleportType::TeleportPhysics);
 }
 
@@ -454,6 +530,7 @@ void ARoadsterPawn::Tick(float DeltaSeconds)
 	UpdateVisuals(DeltaSeconds);
 	if (!(RoadsterDisableMask() & 4)) UpdateSmoke(DeltaSeconds);
 	UpdateAudio(DeltaSeconds);
+	EarthVisual->SetVisibility(Sim.Set.bRoadstarMode && Sim.T.AltitudeM > 1000.0);
 	UpdateLaps(DeltaSeconds);
 	UpdateCamera(DeltaSeconds);
 
@@ -600,7 +677,12 @@ void ARoadsterPawn::UpdateVisuals(float DeltaSeconds)
 	}
 	// fans spin about X at the simulated rpm (visual rate capped to avoid strobing)
 	const float FanDeg = FMath::Min(Sim.FanRPM, 900.0) * 6.0 * DeltaSeconds;
-	for (UStaticMeshComponent* F : Fans) F->AddRelativeRotation(FRotator(0, 0, FanDeg));
+	for (int32 i = 0; i < Fans.Num(); ++i)
+	{
+		const auto* Meta = RoadsterRig::FindFan(TCHAR_TO_ANSI(*FString::Printf(TEXT("Fan_%d"), i)));
+		const FVector Axis = Meta ? FVector(Meta->AX, -Meta->AY, Meta->AZ).GetSafeNormal() : FVector::ForwardVector;
+		Fans[i]->AddRelativeRotation(FQuat(Axis, FMath::DegreesToRadians(FanDeg)));
+	}
 
 	// wing: blend stowed -> deployed by WingAngle
 	{
@@ -620,8 +702,12 @@ void ARoadsterPawn::UpdateVisuals(float DeltaSeconds)
 	}
 	// barge boards swing out
 	{
-		const bool bDeploy = Sim.Set.Aero == AeroPreset::LowDrag ? false : (Sim.Set.Aero == AeroPreset::Custom ? Sim.Set.bBargeDeployed : true);
-		static float B = 1.f;
+		// retracted into their slots unless asked for: High Downforce, Custom on, or Auto above ~90 km/h
+		const bool bDeploy = Sim.Set.Aero == AeroPreset::LowDrag ? false
+			: Sim.Set.Aero == AeroPreset::Custom ? Sim.Set.bBargeDeployed
+			: Sim.Set.Aero == AeroPreset::HighDownforce ? true
+			: Sim.T.Speed > 25.0;
+		static float B = 0.f;
 		B = FMath::FInterpTo(B, bDeploy ? 1.f : 0.f, DeltaSeconds, 5.f);
 		BargeL->SetRelativeTransform(FTransform(FRotator(0, -25.f * B, 0), BargeLStowed.GetLocation() + FVector(10.f * B, -4.f * B, 0)));
 		BargeR->SetRelativeTransform(FTransform(FRotator(0, 25.f * B, 0), BargeRStowed.GetLocation() + FVector(10.f * B, 4.f * B, 0)));
@@ -742,7 +828,7 @@ void ARoadsterPawn::UpdateAudio(float DeltaSeconds)
 		AudioThrust->SetVolumeMultiplier(Th * 1.6f);
 		AudioThrust->SetPitchMultiplier(0.8f + 0.4f * Th);
 	}
-	if (AudioWind) { AudioWind->SetVolumeMultiplier(FMath::Clamp(T.Speed * T.Speed / 6000.f, 0.0, 1.2) * (IsInterior() ? 0.45f : 1.f)); AudioWind->SetPitchMultiplier(0.7f + T.Speed / 160.f); }
+	if (AudioWind) { AudioWind->SetVolumeMultiplier(FMath::Clamp(T.Speed * T.Speed / 6000.f * T.AirDensityKgM3 / 1.2, 0.0, 1.4) * (IsInterior() ? 0.50f : 1.f)); AudioWind->SetPitchMultiplier(FMath::Clamp(0.7f + T.Speed / 160.f, 0.7f, 3.f)); }
 	float Slide = 0.f;
 	for (const WheelState& W : Sim.Wheels) if (W.bContact) Slide = FMath::Max(Slide, (float)FMath::Clamp((W.SlideSpeed - 2.0) / 10.0, 0.0, 1.0) * (float)FMath::Clamp(W.Load / 5000.0, 0.0, 1.0));
 	if (AudioTire) { AudioTire->SetVolumeMultiplier(Slide * 0.9f); AudioTire->SetPitchMultiplier(0.85f + Slide * 0.3f); }
@@ -782,6 +868,9 @@ void ARoadsterPawn::UpdateCamera(float DeltaSeconds)
 	const FVector Fwd = T.GetUnitAxis(EAxis::X), Up = T.GetUnitAxis(EAxis::Z);
 	const FVector CarPos = T.GetLocation();
 	const float Speed = Sim.T.Speed;
+	const float Feel = FMath::Clamp(SpeedFeelIntensity, 0.f, 1.5f);
+	CameraAccelG = FMath::FInterpTo(CameraAccelG, (float)Sim.T.AccelG.x, DeltaSeconds, 8.f);
+	const float Rush = FMath::Clamp(Speed / 85.f, 0.f, 1.f);
 	float TargetFov = 70.f;
 
 	auto LookRot = [](const FVector& Dir, const FVector& UpHint) { return FRotationMatrix::MakeFromXZ(Dir, UpHint).Rotator(); };
@@ -799,8 +888,8 @@ void ARoadsterPawn::UpdateCamera(float DeltaSeconds)
 		if (Speed > 3.0) Head = FMath::Lerp(Fwd, ToU(Sim.V).GetSafeNormal(), 0.35f).GetSafeNormal();
 		const FRotator Look = LookOffset;
 		const FVector Back = FQuat(CamUp, FMath::DegreesToRadians(Look.Yaw)).RotateVector(-Head);
-		const float Dist = (bFar ? 980.f : 640.f) + Speed * 1.2f;
-		const float Height = (bFar ? 300.f : 185.f) + FMath::Clamp(Look.Pitch, -30.f, 60.f) * 4.f;
+		const float Dist = (bFar ? 980.f : 640.f) + FMath::Min(Speed, 160.f) * 1.1f + FMath::Clamp(CameraAccelG, -2.f, 4.f) * 12.f * Feel;
+		const float Height = (bFar ? 300.f : 170.f) - Rush * 22.f * Feel + FMath::Clamp(Look.Pitch, -30.f, 60.f) * 4.f;
 		const FVector Desired = CarPos + Back * Dist + CamUp * Height;
 		if (!bCamInit) { CamPos = Desired; CamVel = FVector::ZeroVector; bCamInit = true; }
 		// exponential follow in the car frame: exact for any frame time (stable at low fps)
@@ -811,16 +900,18 @@ void ARoadsterPawn::UpdateCamera(float DeltaSeconds)
 		if (FVector::DistSquared(CamPos, Desired) > FMath::Square(3000.f)) CamPos = Desired;
 		const FVector Target = CarPos + CamUp * 80.f + Fwd * 120.f;
 		CamRot = LookRot((Target - CamPos).GetSafeNormal(), CamUp);
-		TargetFov = 72.f + FMath::Clamp(Speed * 0.12f, 0.f, 22.f);
+		TargetFov = 72.f + (Rush * 16.f + FMath::Clamp(CameraAccelG, 0.f, 3.f) * 1.4f) * Feel;
 		break;
 	}
 	case ERoadsterCamera::Cockpit:
 	{
-		// driver's eye, left-hand drive
-		CamPos = T.TransformPosition(B2U(-0.18, 0.38, 1.0));
-		CamRot = (T.GetRotation() * FQuat(FRotator(-6.f + LookOffset.Pitch, LookOffset.Yaw, 0))).Rotator();
+		// driver's eye, left-hand drive: ~0.64 m to the yoke rim (the POV footage shows the yoke close), headliner clear
+		const float LongLag = FMath::Clamp(CameraAccelG * 0.022f, -0.035f, 0.065f) * Feel;
+		const float LatLag = FMath::Clamp((float)Sim.T.AccelG.y * 0.012f, -0.025f, 0.025f) * Feel;
+		CamPos = T.TransformPosition(B2U(-0.08 - LongLag, 0.38 + LatLag, 0.98));
+		CamRot = (T.GetRotation() * FQuat(FRotator(-6.f + LookOffset.Pitch - CameraAccelG * 0.4f * Feel, LookOffset.Yaw, FMath::Clamp((float)Sim.T.AccelG.y, -2.f, 2.f) * 0.5f * Feel))).Rotator();
 		CamUp = Up;
-		TargetFov = 80.f;
+		TargetFov = 80.f + (Rush * 7.f + FMath::Clamp(CameraAccelG, 0.f, 3.f)) * Feel;
 		break;
 	}
 	case ERoadsterCamera::Hood:
@@ -864,9 +955,21 @@ void ARoadsterPawn::UpdateCamera(float DeltaSeconds)
 	}
 	}
 	if (bExternalCam) { CamPos = ExtCamPos; CamRot = ExtCamRot; TargetFov = 70.f; bCamInit = false; }
+	else if (CameraMode == ERoadsterCamera::Cockpit || CameraMode == ERoadsterCamera::Hood || CameraMode == ERoadsterCamera::Chase)
+	{
+		const float Contact = Sim.T.WheelsInContact > 0 ? 1.f : 0.15f;
+		const float Micro = Rush * Rush * Contact * Feel;
+		CamPos += Up * (FMath::Sin((float)Sim.SimTime * 43.f) * 0.55f + FMath::Sin((float)Sim.SimTime * 71.f) * 0.18f) * Micro;
+		Camera->PostProcessSettings.MotionBlurAmount = FMath::Lerp(0.18f, 0.38f, Rush) * FMath::Min(Feel, 1.f);
+	}
 	CamFov = FMath::FInterpTo(CamFov, TargetFov, DeltaSeconds, 3.f);
 	Camera->SetWorldLocationAndRotation(CamPos, CamRot);
 	Camera->SetFieldOfView(CamFov);
+	// From the driver's seat the eye stays adapted to the bright road (as in Tesla's POV footage): without this the
+	// histogram exposure brightens for the dark cabin, the grey suede reads white and the windshield blows out.
+	const bool bCabin = IsInterior() && !bExternalCam;
+	Camera->PostProcessSettings.bOverride_AutoExposureBias = bCabin;
+	Camera->PostProcessSettings.AutoExposureBias = -0.9f;   // level volume uses +0.3 -> about -1.2 stops in the cabin
 }
 
 void ARoadsterPawn::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)

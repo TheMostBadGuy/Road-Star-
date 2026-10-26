@@ -36,6 +36,7 @@ void ARoadsterHUD::DrawHUD()
 	case EUIMode::Builder: if (!FString(FCommandLine::Get()).Contains(TEXT("camat="))) DrawBuilder(PC, P); break;
 	case EUIMode::Help: DrawDriving(PC, P); break;
 	}
+	// [TEAM HOOKUP: HUD overlays] overlay panels (Physics Lab, legends) draw here, above the mode UI, below toasts.
 	if (PC->ToastTime > 0.f)
 	{
 		const float a = FMath::Clamp(PC->ToastTime * 2.f, 0.f, 1.f);

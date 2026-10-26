@@ -1,7 +1,7 @@
 {
  "parts": {
   "Fan_Box": {
-   "tris": 21776,
+   "tris": 16704,
    "origin": [
     0.0,
     0.0,
@@ -18,7 +18,7 @@
    "uv": true
   },
   "Fan_0": {
-   "tris": 3828,
+   "tris": 3236,
    "origin": [
     -1.955,
     -0.452,
@@ -32,7 +32,7 @@
    "uv": true
   },
   "Fan_1": {
-   "tris": 3828,
+   "tris": 3236,
    "origin": [
     -1.955,
     -0.145,
@@ -46,7 +46,7 @@
    "uv": true
   },
   "Fan_2": {
-   "tris": 3828,
+   "tris": 3236,
    "origin": [
     -1.955,
     0.145,
@@ -60,7 +60,7 @@
    "uv": true
   },
   "Fan_3": {
-   "tris": 3828,
+   "tris": 3236,
    "origin": [
     -1.955,
     0.452,
@@ -74,7 +74,7 @@
    "uv": true
   },
   "Thrusters_Rear": {
-   "tris": 25548,
+   "tris": 20340,
    "origin": [
     0.0,
     0.0,
@@ -91,7 +91,7 @@
    "uv": true
   },
   "Thrusters_Rocket": {
-   "tris": 29640,
+   "tris": 27768,
    "origin": [
     0.0,
     0.0,
@@ -109,7 +109,7 @@
    "uv": true
   },
   "COPV_Rocket": {
-   "tris": 14264,
+   "tris": 14424,
    "origin": [
     0.0,
     0.0,
@@ -122,12 +122,13 @@
     "M_Rubber",
     "M_BlackGloss",
     "M_Nozzle_Gold",
-    "M_Titanium"
+    "M_Titanium",
+    "M_Light_Red"
    ],
    "uv": true
   },
   "COPV_Trunk": {
-   "tris": 12496,
+   "tris": 8028,
    "origin": [
     0.0,
     0.0,
@@ -140,12 +141,13 @@
     "M_Rubber",
     "M_BlackGloss",
     "M_Nozzle_Gold",
-    "M_Titanium"
+    "M_Titanium",
+    "M_Light_Red"
    ],
    "uv": true
   },
   "ColdGas_Plumbing": {
-   "tris": 12628,
+   "tris": 21200,
    "origin": [
     0.0,
     0.0,
@@ -163,73 +165,77 @@
    "uv": true
   }
  },
- "total_tris": 131664,
+ "total_tris": 121408,
  "nozzles": [
   {
-   "name": "Rear_-0.352",
+   "name": "Rear_R2",
    "exit": [
     -2.15,
     -0.352,
-    0.584
+    0.578
    ],
    "exhaust": [
     -1,
     0,
     0
    ],
-   "throat_d": 0.022,
-   "exit_d": 0.072
+   "throat_d": 0.035,
+   "exit_d": 0.072,
+   "feed_line_d": 0.06
   },
   {
-   "name": "Rear_-0.118",
+   "name": "Rear_R1",
    "exit": [
     -2.15,
     -0.118,
-    0.584
+    0.578
    ],
    "exhaust": [
     -1,
     0,
     0
    ],
-   "throat_d": 0.022,
-   "exit_d": 0.072
+   "throat_d": 0.035,
+   "exit_d": 0.072,
+   "feed_line_d": 0.06
   },
   {
-   "name": "Rear_+0.118",
+   "name": "Rear_L1",
    "exit": [
     -2.15,
     0.118,
-    0.584
+    0.578
    ],
    "exhaust": [
     -1,
     0,
     0
    ],
-   "throat_d": 0.022,
-   "exit_d": 0.072
+   "throat_d": 0.035,
+   "exit_d": 0.072,
+   "feed_line_d": 0.06
   },
   {
-   "name": "Rear_+0.352",
+   "name": "Rear_L2",
    "exit": [
     -2.15,
     0.352,
-    0.584
+    0.578
    ],
    "exhaust": [
     -1,
     0,
     0
    ],
-   "throat_d": 0.022,
-   "exit_d": 0.072
+   "throat_d": 0.035,
+   "exit_d": 0.072,
+   "feed_line_d": 0.06
   },
   {
-   "name": "Lift_Front_L",
+   "name": "Lift_FL",
    "exit": [
-    0.975,
-    0.855,
+    0.965,
+    0.915,
     0.09
    ],
    "exhaust": [
@@ -237,11 +243,28 @@
     0,
     -1
    ],
-   "throat_d": 0.011,
-   "exit_d": 0.056
+   "throat_d": 0.0285,
+   "exit_d": 0.056,
+   "feed_line_d": 0.05
   },
   {
-   "name": "Lift_Rear_L",
+   "name": "Lift_FR",
+   "exit": [
+    0.965,
+    -0.915,
+    0.09
+   ],
+   "exhaust": [
+    0,
+    0,
+    -1
+   ],
+   "throat_d": 0.0285,
+   "exit_d": 0.056,
+   "feed_line_d": 0.05
+  },
+  {
+   "name": "Lift_RL",
    "exit": [
     -2.0,
     0.74,
@@ -252,41 +275,12 @@
     0,
     -1
    ],
-   "throat_d": 0.011,
-   "exit_d": 0.056
+   "throat_d": 0.0285,
+   "exit_d": 0.056,
+   "feed_line_d": 0.05
   },
   {
-   "name": "Yaw_Front_L",
-   "exit": [
-    1.97,
-    0.912,
-    0.235
-   ],
-   "exhaust": [
-    0,
-    1,
-    0
-   ],
-   "throat_d": 0.009,
-   "exit_d": 0.03
-  },
-  {
-   "name": "Lift_Front_R",
-   "exit": [
-    0.975,
-    -0.855,
-    0.09
-   ],
-   "exhaust": [
-    0,
-    0,
-    -1
-   ],
-   "throat_d": 0.011,
-   "exit_d": 0.056
-  },
-  {
-   "name": "Lift_Rear_R",
+   "name": "Lift_RR",
    "exit": [
     -2.0,
     -0.74,
@@ -297,14 +291,31 @@
     0,
     -1
    ],
-   "throat_d": 0.011,
-   "exit_d": 0.056
+   "throat_d": 0.0285,
+   "exit_d": 0.056,
+   "feed_line_d": 0.05
   },
   {
-   "name": "Yaw_Front_R",
+   "name": "Yaw_L_firing",
    "exit": [
     1.97,
-    -0.912,
+    0.9184,
+    0.235
+   ],
+   "exhaust": [
+    0,
+    1,
+    0
+   ],
+   "throat_d": 0.0158,
+   "exit_d": 0.031,
+   "feed_line_d": 0.03
+  },
+  {
+   "name": "Yaw_R_firing",
+   "exit": [
+    1.97,
+    -0.9184,
     0.235
    ],
    "exhaust": [
@@ -312,12 +323,13 @@
     -1,
     0
    ],
-   "throat_d": 0.009,
-   "exit_d": 0.03
+   "throat_d": 0.0158,
+   "exit_d": 0.031,
+   "feed_line_d": 0.03
   }
  ],
  "copv_L": {
-  "rocket": 400.2797447718363,
-  "trunk": 200.7939561651858
+  "rocket": 291.8519996276846,
+  "trunk": 143.74084915136788
  }
 }

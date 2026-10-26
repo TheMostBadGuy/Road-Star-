@@ -1,4 +1,5 @@
 using UnrealBuildTool;
+using System.IO;
 
 public class RoadsterSim : ModuleRules
 {
@@ -8,10 +9,19 @@ public class RoadsterSim : ModuleRules
 
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
-			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput",
+			"Core", "CoreUObject", "Engine", "ApplicationCore", "InputCore", "EnhancedInput",
 			"ProceduralMeshComponent", "Slate", "SlateCore", "UMG",
 			"Json", "JsonUtilities", "AudioMixer", "SignalProcessing", "Niagara",
 			"RenderCore", "RHI"
 		});
+
+		if (Target.Platform == UnrealTargetPlatform.Win64)
+		{
+			// SDL is loaded explicitly, so a missing DLL leaves normal input usable.
+			string SDLRoot = Path.GetFullPath(Path.Combine(ModuleDirectory, "../../ThirdParty/SDL3"));
+			PrivateIncludePaths.Add(Path.Combine(SDLRoot, "include"));
+			RuntimeDependencies.Add("$(TargetOutputDir)/SDL3.dll", Path.Combine(SDLRoot, "lib/x64/SDL3.dll"));
+			RuntimeDependencies.Add("$(TargetOutputDir)/SDL3-LICENSE.txt", Path.Combine(SDLRoot, "LICENSE.txt"), StagedFileType.NonUFS);
+		}
 	}
 }

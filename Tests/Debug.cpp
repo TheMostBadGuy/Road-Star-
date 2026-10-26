@@ -12,22 +12,19 @@ static Hit FlatTrace(const V3& s, const V3& d, double len, double r)
 }
 int main()
 {
-	for (int steerCase = 0; steerCase < 2; ++steerCase)
+	Vehicle v; v.Init(Trim::Rocket);
+	std::printf("lift pos: FL(%.3f,%.3f) FR(%.3f,%.3f) RL(%.3f,%.3f) RR(%.3f,%.3f) cg.x %.3f\n", v.S.LiftNozzlePos[0].x, v.S.LiftNozzlePos[0].y, v.S.LiftNozzlePos[1].x, v.S.LiftNozzlePos[1].y,
+		v.S.LiftNozzlePos[2].x, v.S.LiftNozzlePos[2].y, v.S.LiftNozzlePos[3].x, v.S.LiftNozzlePos[3].y, v.CGBody().x);
+	v.Place(V3(0, 0, 8), Quat::AxisAngle(V3(1, 0, 0), kPi * 0.95));
+	Inputs in;
+	for (int i = 0; i < 4000; ++i)
 	{
-		Vehicle v; v.Init(Trim::Rocket); v.Place(V3(), Quat());
-		Inputs in; for (int i = 0; i < 1000; ++i) v.Step(0.001, in, FlatTrace);
-		v.Place(v.BodyOriginWorld(), v.Q, 74.0);
-		in.Brake = 1.0; in.Steer = steerCase ? 0.05 : 0.0;
-		for (int i = 0; i <= 5000; ++i)
+		v.Step(0.001, in, FlatTrace);
+		if (i % 100 == 0)
 		{
-			v.Step(0.001, in, FlatTrace);
-			if (i % 250 == 0)
-			{
-				const V3 vb = v.Q.Unrotate(v.V), wb = v.Q.Unrotate(v.W);
-				std::printf("steer=%.2f t=%.2f vx=%.1f vy=%.2f yaw=%.3f ax=%.2f fan=%.0f wing=%.0f F:%.0f/%.0f R:%.0f/%.0f absR=%.2f kR=%.2f aR=%.3f aF=%.3f\n", in.Steer, i / 1000.0, vb.x, vb.y, wb.z, v.T.AccelG.x, v.T.FanDownforceN, v.T.WingDownforceN,
-					v.Wheels[0].Load, v.Wheels[1].Load, v.Wheels[2].Load, v.Wheels[3].Load, v.Wheels[2].ABSScale, v.Wheels[2].Kappa, v.Wheels[2].Alpha, v.Wheels[0].Alpha);
-			}
-			if (v.V.Len() < 0.5) break;
+			const V3 wb = v.Q.Unrotate(v.W);
+			std::printf("t=%.1f z=%.2f up.z=%.2f w=(%.2f,%.2f,%.2f) corner=(%.2f %.2f %.2f %.2f) land=%d contacts=%d tank=%.0f%%\n", i / 1000.0, v.BodyOriginWorld().z, v.Q.Up().z, wb.x, wb.y, wb.z,
+				v.T.ThrustCorner[0], v.T.ThrustCorner[1], v.T.ThrustCorner[2], v.T.ThrustCorner[3], v.Landing.Intervening ? 1 : 0, v.T.WheelsInContact, v.T.TankPercent * 100);
 		}
 	}
 }

@@ -1,0 +1,1 @@
+PASS: original and installed nitrogen diagnostic outputs have identical reported physics. Comparison skips the first table-build timing line and replaces only numeric microsecond execution-cost fields, retaining their surrounding physics values and line order.

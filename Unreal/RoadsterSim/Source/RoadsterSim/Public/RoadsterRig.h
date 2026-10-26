@@ -6,26 +6,133 @@ namespace RoadsterRig
 {
 	struct FPivot { const char* Name; double X, Y, Z; };
 	static const FPivot Pivots[] = {
-		{ "Rear_Wing", -2.10000, 0.00000, 0.93000 },
 		{ "Hood_Vent", 1.77300, 0.00000, 0.62674 },
-		{ "Skirts", 0.00000, 0.00000, 0.11200 },
 		{ "Yoke", 0.62000, 0.38000, 0.72000 },
-		{ "Barge_L", 0.83000, 0.95055, 0.37409 },
-		{ "Barge_R", 0.83000, -0.95055, 0.37409 },
-		{ "Fan_0", -2.05000, -0.47250, 0.28400 },
-		{ "Fan_1", -2.05000, -0.15750, 0.28400 },
-		{ "Fan_2", -2.05000, 0.15750, 0.28400 },
-		{ "Fan_3", -2.05000, 0.47250, 0.28400 },
+		{ "Door_L", 0.65500, 0.89375, 0.77500 },
+		{ "DoorGlass_L", 0.65500, 0.89375, 0.77500 },
+		{ "Door_R", 0.65500, -0.89375, 0.77500 },
+		{ "DoorGlass_R", 0.65500, -0.89375, 0.77500 },
+		{ "Rear_Wing", -1.86000, 0.00000, 0.88800 },
+		{ "Wing_Struts", -1.86000, 0.00000, 0.88800 },
+		{ "Barge_L", 1.06320, 0.98973, 0.24234 },
+		{ "Barge_R", 1.06320, -0.98973, 0.24234 },
+		{ "FrontWing_L", 2.17000, 0.33000, 0.24600 },
+		{ "FrontWing_R", 2.17000, -0.33000, 0.24600 },
+		{ "Skirt_Front", 1.37500, 0.00000, 0.23200 },
+		{ "Skirt_L", 0.02500, 0.86000, 0.23200 },
+		{ "Skirt_Rear", -1.35000, 0.00000, 0.23200 },
+		{ "Skirt_R", 0.02500, -0.86000, 0.23200 },
+		{ "HeadlightCover_L", 2.15000, 0.67700, 0.48100 },
+		{ "HeadlightCover_R", 2.15000, -0.67700, 0.48100 },
+		{ "Fan_0", -1.95500, -0.45200, 0.38000 },
+		{ "Fan_1", -1.95500, -0.14500, 0.38000 },
+		{ "Fan_2", -1.95500, 0.14500, 0.38000 },
+		{ "Fan_3", -1.95500, 0.45200, 0.38000 },
+		{ "Susp_FL_LowerArm", 1.41250, 0.32000, 0.15250 },
+		{ "Susp_FL_UpperArm", 1.41750, 0.40000, 0.50000 },
+		{ "Susp_FL_Upright", 1.41250, 0.85000, 0.34250 },
+		{ "Susp_FL_TieRod", 1.54750, 0.40000, 0.34350 },
+		{ "Susp_FL_Pushrod", 1.44250, 0.72000, 0.19250 },
+		{ "Susp_FL_Rocker", 1.44250, 0.35761, 0.53152 },
+		{ "Susp_FL_Damper", 1.44250, 0.06500, 0.61152 },
+		{ "Susp_FL_DamperRod", 1.44250, 0.35761, 0.61152 },
+		{ "Susp_FL_Spring", 1.44250, 0.16700, 0.61152 },
+		{ "Susp_FR_LowerArm", 1.41250, -0.32000, 0.15250 },
+		{ "Susp_FR_UpperArm", 1.41750, -0.40000, 0.50000 },
+		{ "Susp_FR_Upright", 1.41250, -0.85000, 0.34250 },
+		{ "Susp_FR_TieRod", 1.54750, -0.40000, 0.34350 },
+		{ "Susp_FR_Pushrod", 1.44250, -0.72000, 0.19250 },
+		{ "Susp_FR_Rocker", 1.44250, -0.35761, 0.53152 },
+		{ "Susp_FR_Damper", 1.44250, -0.06500, 0.61152 },
+		{ "Susp_FR_DamperRod", 1.44250, -0.35761, 0.61152 },
+		{ "Susp_FR_Spring", 1.44250, -0.16700, 0.61152 },
+		{ "Susp_RL_LowerArm", -1.40250, 0.33000, 0.16500 },
+		{ "Susp_RL_UpperArm", -1.40750, 0.42000, 0.53500 },
+		{ "Susp_RL_Upright", -1.41250, 0.84000, 0.36720 },
+		{ "Susp_RL_ToeLink", -1.26750, 0.41000, 0.35820 },
+		{ "Susp_RL_Halfshaft", -1.41250, 0.28000, 0.36020 },
+		{ "Susp_RL_Pushrod", -1.32750, 0.70000, 0.21220 },
+		{ "Susp_RL_Rocker", -1.32750, 0.36525, 0.54988 },
+		{ "Susp_RL_Damper", -1.32750, 0.07500, 0.62988 },
+		{ "Susp_RL_DamperRod", -1.32750, 0.36525, 0.62988 },
+		{ "Susp_RL_Spring", -1.32750, 0.17700, 0.62988 },
+		{ "Susp_RR_LowerArm", -1.40250, -0.33000, 0.16500 },
+		{ "Susp_RR_UpperArm", -1.40750, -0.42000, 0.53500 },
+		{ "Susp_RR_Upright", -1.41250, -0.84000, 0.36720 },
+		{ "Susp_RR_ToeLink", -1.26750, -0.41000, 0.35820 },
+		{ "Susp_RR_Halfshaft", -1.41250, -0.28000, 0.36020 },
+		{ "Susp_RR_Pushrod", -1.32750, -0.70000, 0.21220 },
+		{ "Susp_RR_Rocker", -1.32750, -0.36525, 0.54988 },
+		{ "Susp_RR_Damper", -1.32750, -0.07500, 0.62988 },
+		{ "Susp_RR_DamperRod", -1.32750, -0.36525, 0.62988 },
+		{ "Susp_RR_Spring", -1.32750, -0.17700, 0.62988 },
 	};
-	static const int NumPivots = 10;
-	struct FNozzle { const char* Name; double X, Y, Z, DX, DY, DZ, ExitDiameter; };
+	static const int NumPivots = 60;
+	// D is exhaust/plume direction. Vehicle force is -D. All points are nozzle EXIT centres.
+	struct FNozzle { const char* Name; double X, Y, Z, DX, DY, DZ, ExitDiameter, ThroatDiameter, FeedLineDiameter; };
 	static const FNozzle Nozzles[] = {
-		{ "none", 0, 0, 0, 0, 0, 0, 0 },
+		{ "Rear_R2", -2.150000, -0.352000, 0.578000, -1.000000, 0.000000, 0.000000, 0.072000, 0.035000, 0.060000 },
+		{ "Rear_R1", -2.150000, -0.118000, 0.578000, -1.000000, 0.000000, 0.000000, 0.072000, 0.035000, 0.060000 },
+		{ "Rear_L1", -2.150000, 0.118000, 0.578000, -1.000000, 0.000000, 0.000000, 0.072000, 0.035000, 0.060000 },
+		{ "Rear_L2", -2.150000, 0.352000, 0.578000, -1.000000, 0.000000, 0.000000, 0.072000, 0.035000, 0.060000 },
+		{ "Lift_FL", 0.965000, 0.915000, 0.090000, 0.000000, 0.000000, -1.000000, 0.056000, 0.028500, 0.050000 },
+		{ "Lift_FR", 0.965000, -0.915000, 0.090000, 0.000000, 0.000000, -1.000000, 0.056000, 0.028500, 0.050000 },
+		{ "Lift_RL", -2.000000, 0.740000, 0.200000, 0.000000, 0.000000, -1.000000, 0.056000, 0.028500, 0.050000 },
+		{ "Lift_RR", -2.000000, -0.740000, 0.200000, 0.000000, 0.000000, -1.000000, 0.056000, 0.028500, 0.050000 },
+		{ "Yaw_L_firing", 1.970000, 0.918418, 0.235000, 0.000000, 1.000000, 0.000000, 0.031000, 0.015800, 0.030000 },
+		{ "Yaw_R_firing", 1.970000, -0.918418, 0.235000, 0.000000, -1.000000, 0.000000, 0.031000, 0.015800, 0.030000 },
 	};
-	static const int NumNozzles = 0;
+	static const int NumNozzles = 10;
+	// Rest pitch is BAKED in each exported fan. Rotate around A (car frame); E is airflow exhaust.
+	struct FFan { const char* Name; double X, Y, Z, AX, AY, AZ, EX, EY, EZ, PitchDegrees, TipDiameter; int Blades; };
+	static const FFan Fans[] = {
+		{ "Fan_0", -1.955000, -0.452000, 0.380000, 0.819152, 0.000000, -0.573576, -0.819152, -0.000000, 0.573576, 35.0000, 0.249000, 7 },
+		{ "Fan_1", -1.955000, -0.145000, 0.380000, 0.819152, 0.000000, -0.573576, -0.819152, -0.000000, 0.573576, 35.0000, 0.249000, 7 },
+		{ "Fan_2", -1.955000, 0.145000, 0.380000, 0.819152, 0.000000, -0.573576, -0.819152, -0.000000, 0.573576, 35.0000, 0.249000, 7 },
+		{ "Fan_3", -1.955000, 0.452000, 0.380000, 0.819152, 0.000000, -0.573576, -0.819152, -0.000000, 0.573576, 35.0000, 0.249000, 7 },
+	};
+	static const int NumFans = 4;
+	// Moving body panels. Mesh origin = P (a point on the hinge axis). Angles are signed degrees about A
+	// (Blender right-hand rule): Open = fully open / deployed; Mid = front wings' High Downforce; Max = travel limit.
+	struct FHinge { const char* Name; double PX, PY, PZ, AX, AY, AZ, Open, Mid, Max; };
+	static const FHinge Hinges[] = {
+		{ "HeadlightCover_L", 2.150000, 0.677000, 0.481000, 0.279225, -0.954950, -0.100521, 11.0000, 11.0000, 11.0000 },
+		{ "HeadlightCover_R", 2.150000, -0.677000, 0.481000, 0.279225, 0.954950, -0.100521, -11.0000, -11.0000, -11.0000 },
+		{ "Door_L", 0.655000, 0.893754, 0.775000, -0.397687, -0.833187, 0.384244, -98.0000, -98.0000, -98.0000 },
+		{ "DoorGlass_L", 0.655000, 0.893754, 0.775000, -0.397687, -0.833187, 0.384244, -98.0000, -98.0000, -98.0000 },
+		{ "Door_R", 0.655000, -0.893754, 0.775000, -0.397687, 0.833187, 0.384244, 98.0000, 98.0000, 98.0000 },
+		{ "DoorGlass_R", 0.655000, -0.893754, 0.775000, -0.397687, 0.833187, 0.384244, 98.0000, 98.0000, 98.0000 },
+		{ "Barge_L", 1.063200, 0.989730, 0.242339, 0.215501, -0.005650, 0.976487, -20.0000, -20.0000, -20.0000 },
+		{ "Barge_R", 1.063200, -0.989730, 0.242339, 0.215501, 0.005650, 0.976487, 20.0000, 20.0000, 20.0000 },
+		{ "FrontWing_L", 2.170000, 0.330000, 0.246000, 0.000000, 1.000000, 0.000000, 26.0000, 26.0000, 80.0000 },
+		{ "FrontWing_R", 2.170000, -0.330000, 0.246000, 0.000000, 1.000000, 0.000000, 26.0000, 26.0000, 80.0000 },
+		{ "Hood_Vent", 1.773000, 0.000000, 0.626738, 0.000000, 1.000000, 0.000000, -9.0000, -9.0000, -9.0000 },
+	};
+	static const int NumHinges = 11;
+	// Rear wing: stowed = mesh at the pivot; deployed = pivot + Lift * path(s); pitch about +Y (trailing edge up).
+	static const double WingPivot[3] = { -1.860000, 0.000000, 0.888000 };
+	static const double WingLift[3] = { -0.205000, 0.000000, 0.270000 };
+	static const double WingPitchLowDrag = 5.500, WingPitchHighDownforce = 19.000, WingPitchAirbrake = 80.000;
+	static const double WingDeploySeconds = 1.200, WingPitchSeconds = 0.350, WingAirbrakeSeconds = 0.400;
+	static const double SkirtHeight = 0.1200, SkirtReach = 0.1350;   // metres; skirts drop along -Z
+	inline const FHinge* FindHinge(const char* Name)
+	{
+		for (const FHinge& P : Hinges) { const char* a = P.Name; const char* b = Name; while (*a && *a == *b) { ++a; ++b; } if (*a == *b) return &P; }
+		return nullptr;
+	}
 	inline const FPivot* FindPivot(const char* Name)
 	{
 		for (const FPivot& P : Pivots) { const char* a = P.Name; const char* b = Name; while (*a && *a == *b) { ++a; ++b; } if (*a == *b) return &P; }
+		return nullptr;
+	}
+	inline const FNozzle* FindNozzle(const char* Name)
+	{
+		for (const FNozzle& P : Nozzles) { const char* a = P.Name; const char* b = Name; while (*a && *a == *b) { ++a; ++b; } if (*a == *b) return &P; }
+		return nullptr;
+	}
+	inline const FFan* FindFan(const char* Name)
+	{
+		for (const FFan& P : Fans) { const char* a = P.Name; const char* b = Name; while (*a && *a == *b) { ++a; ++b; } if (*a == *b) return &P; }
 		return nullptr;
 	}
 }

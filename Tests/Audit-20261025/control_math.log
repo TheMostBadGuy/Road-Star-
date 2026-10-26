@@ -1,0 +1,2 @@
+ControlMathHarness.cpp
+PASS 7937 checks: bounded curves, monotonic/symmetric deadzone, triggers, speed shaping, frame-independent smoothing, finite valve presets.

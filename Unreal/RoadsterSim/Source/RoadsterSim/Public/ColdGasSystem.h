@@ -1,7 +1,8 @@
 #pragma once
 // =====================================================================================================================
-// ColdGasSystem.h - valve-level cold-gas (nitrogen) propulsion model for the 2026 Tesla Roadster simulator.
+// ColdGasSystem.h - valve-level cold-gas propulsion model for the 2026 Tesla Roadster simulator.
 // =====================================================================================================================
+// Gas experiments: N2 existing PR; He and Ar reference Helmholtz EOS; see Tests/GasExperiments-20261025/README.md.
 // Pure C++17, header-only, no engine types, deterministic. Built to run beside Roadster::Vehicle at 1 kHz; it
 // sub-steps internally (0.25 ms while gas is moving, 20 ms when everything is shut) for the fast feed dynamics.
 // Validation: Tests/ColdGasHarness.cpp. Wiring into RoadsterPhysics.h: Tests/coldgas_integration.md.
@@ -297,6 +298,242 @@ namespace ColdGas
 		}
 	}
 
+
+    // Species are per System, never process-global. Pure gases only: mixtures require mixture EOS and phase handling.
+    enum class GasSpecies : uint8_t { Nitrogen = 0, Helium = 1, Argon = 2 };
+    inline bool IsValidGasSpecies(GasSpecies s) { return s == GasSpecies::Nitrogen || s == GasSpecies::Helium || s == GasSpecies::Argon; }
+    struct GasProperties
+    {
+        const char* Name;
+        double MolarMassKgMol, GasConstantJkgK, CriticalK, CriticalPa, CriticalDensityKgM3, TripleK, Acentric;
+        double IdealCpJkgK, IdealGamma;
+    };
+    inline const GasProperties& Properties(GasSpecies species)
+    {
+        // Preserve each reference EOS's fitted R, rather than substituting a modern R into fitted coefficients.
+        static const GasProperties n{ "Nitrogen", kMolarMass, kR, kTc, kPc, kRhoc, kTtriple, kOmega, 3.5*kR, 1.4 };
+        static const GasProperties h{ "Helium", .004002602, 8.314472/.004002602, 5.1953, .22832e6, 17.3837e3*.004002602, 2.1768, -.38354, 2.5*8.314472/.004002602, 5.0/3.0 };
+        static const GasProperties a{ "Argon", .039948, 8.31451/.039948, 150.687, 4.863e6, 535.6, 83.806, -.00219, 2.5*8.31451/.039948, 5.0/3.0 };
+        return species == GasSpecies::Helium ? h : species == GasSpecies::Argon ? a : n;
+    }
+
+    // Reference Helmholtz EOS for the added monatomic gases; nitrogen deliberately retains its existing PR path.
+    // He: Ortiz Vega et al., NIST IR 8474 (2023), Tables 1/2, doi:10.6028/NIST.IR.8474.
+    // Ar: Tegeler, Span & Wagner, JPCRD 28 (1999) 779, doi:10.1063/1.556037.
+    // Coefficient transcription cross-checked against the official CoolProp fluid JSON snapshots in the test folder.
+    // All p,u,h,s,cv,cp,w,JT derivatives below come from ONE Helmholtz potential, not independent lookup fits.
+    class Thermodynamics
+    {
+    public:
+        explicit Thermodynamics(GasSpecies species = GasSpecies::Nitrogen) : Species(species) {}
+        const GasProperties& Data() const { return Properties(Species); }
+        GasSpecies Species;
+        double R() const { return Data().GasConstantJkgK; }
+        double MinVolume() const { return Species == GasSpecies::Nitrogen ? Eos::kVMin : 1e-8; }
+        double CvIdeal(double T) const { return Species == GasSpecies::Nitrogen ? Eos::CvIdeal(T) : 1.5*R(); }
+        double Floor(double p) const
+        {
+            if (Species == GasSpecies::Helium) return 20.0; // No helium cryogenic liquid/superfluid model in this simulator.
+            return p < .999*Data().CriticalPa ? TSat(p)+1.0 : Data().CriticalK+1.0;
+        }
+        Eos::Props Evaluate(double T, double v) const
+        {
+            if (Species == GasSpecies::Nitrogen) return Eos::Evaluate(T, v);
+            const double tau = Data().CriticalK/T, delta = 1.0/(v*Data().CriticalDensityKgM3), r = R();
+            const Derivs f = Residual(tau, delta);
+            // Absolute reference offsets do not affect energy conservation or thrust; use the published He reference.
+            const double a1 = Species == GasSpecies::Helium ? .1733487932835764 : 8.31666243;
+            const double a2 = Species == GasSpecies::Helium ? .4674522201550815 : -4.94651164;
+            const double a0 = a1+a2*tau+std::log(delta)+1.5*std::log(tau);
+            const double at = a2+1.5/tau+f.t;
+            Eos::Props o{}; o.T=T; o.v=v; o.rho=1.0/v;
+            o.p = o.rho*r*T*(1.0+delta*f.d);
+            o.u = r*T*tau*at; o.h=o.u+o.p*v; o.s=r*(tau*at-a0-f.a);
+            o.cv = r*(1.5-tau*tau*f.tt);
+            const double den = 1.0+2.0*delta*f.d+delta*delta*f.dd;
+            const double num = 1.0+delta*f.d-delta*tau*f.dt;
+            o.dpdT = o.rho*r*num; o.dpdv = -o.rho*o.rho*r*T*den;
+            const double dvdT = -o.dpdT/std::min(o.dpdv,-1e-30);
+            o.cp=o.cv+T*o.dpdT*dvdT;
+            o.w=std::sqrt(std::max(1.0,-v*v*o.dpdv*o.cp/o.cv));
+            o.muJT=(T*dvdT-v)/o.cp; o.beta=dvdT/v;
+            return o;
+        }
+        double Pressure(double T, double v) const { return Species == GasSpecies::Nitrogen ? Eos::Pressure(T,v) : Evaluate(T,v).p; }
+        double U(double T, double v) const { return Species == GasSpecies::Nitrogen ? Eos::U(T,v) : Evaluate(T,v).u; }
+        double S(double T, double v) const { return Species == GasSpecies::Nitrogen ? Eos::S(T,v) : Evaluate(T,v).s; }
+        double Cv(double T, double v) const { return Species == GasSpecies::Nitrogen ? Eos::Cv(T,v) : Evaluate(T,v).cv; }
+        double DPDv(double T, double v) const { return Species == GasSpecies::Nitrogen ? Eos::DPDv(T,v) : Evaluate(T,v).dpdv; }
+        double VFromPT(double p, double T, bool liquid=false) const
+        {
+            if (Species == GasSpecies::Nitrogen) return Eos::VFromPT(p,T,liquid);
+            // Bracket the correct phase before safeguarded Newton in density. Config fills are supercritical (200-350 K).
+            double lo=1e-12, hi=std::max(2.0*p/(R()*T),Data().CriticalDensityKgM3*2.0);
+            if (Species == GasSpecies::Argon && T < Data().CriticalK)
+            {
+                if (!liquid && p <= PSat(T)) hi=RhoVapSat(T)*1.001;
+                else { lo=RhoLiqSat(T)*.999; hi=std::max(hi,lo*1.5); }
+            }
+            for (int i=0;i<25 && Pressure(T,1.0/hi)<p;++i) hi*=1.5;
+            double rho=Clampd(p/(R()*T),lo,hi);
+            for(int i=0;i<70;++i)
+            {
+                const Eos::Props q=Evaluate(T,1.0/rho);
+                if (std::fabs(q.p-p)<1e-11*std::max(p,1.0)) break;
+                (q.p>p ? hi : lo)=rho;
+                const double slope=-q.dpdv/(rho*rho), next=rho+(p-q.p)/slope;
+                rho=std::isfinite(next)&&slope>0&&next>lo&&next<hi ? next : .5*(lo+hi);
+            }
+            return 1.0/rho;
+        }
+        Eos::Props EvaluatePT(double p,double T) const { return Evaluate(T,VFromPT(p,T)); }
+        double TFromUV(double u,double v,double guess) const
+        {
+            if (Species == GasSpecies::Nitrogen) return Eos::TFromUV(u,v,guess);
+            double T=Clampd(guess,5.0,3000.0);
+            for(int i=0;i<50;++i)
+            {
+                const auto q=Evaluate(T,v); const double dT=(u-q.u)/std::max(q.cv,.05*R());
+                T=Clampd(T+Clampd(dT,-.3*T,.3*T),2.0,5000.0);
+                if(std::fabs(dT)<1e-10*T) break;
+            }
+            return T;
+        }
+        double PSat(double T) const
+        {
+            if(Species==GasSpecies::Nitrogen) return Eos::PSat(T);
+            if(Species==GasSpecies::Helium) return Data().CriticalPa; // outside simulated helium liquid range
+            return Ancillary(T,0);
+        }
+        double RhoLiqSat(double T) const { return Species==GasSpecies::Nitrogen ? Eos::RhoLiqSat(T) : Ancillary(T,1); }
+        double RhoVapSat(double T) const { return Species==GasSpecies::Nitrogen ? Eos::RhoVapSat(T) : Ancillary(T,2); }
+        double TSat(double p) const
+        {
+            if(Species==GasSpecies::Nitrogen) return Eos::TSat(p);
+            double lo=Data().TripleK,hi=Data().CriticalK;
+            for(int i=0;i<45;++i) { const double m=.5*(lo+hi); (PSat(m)<p ? lo:hi)=m; }
+            return .5*(lo+hi);
+        }
+        double PSatExtended(double T) const
+        {
+            if(Species==GasSpecies::Nitrogen) return Eos::PSatExtended(T);
+            if(T>=Data().TripleK) return PSat(T);
+            // Ar sublimation reference only for a qualitative supersaturation indicator; no solid particles simulated.
+            return PSat(Data().TripleK)*std::exp(-189000.0/R()*(1.0/std::max(T,5.0)-1.0/Data().TripleK));
+        }
+        double Viscosity(double T,double rho) const
+        {
+            if(Species==GasSpecies::Nitrogen) return Eos::Viscosity(T,rho);
+            return (Species==GasSpecies::Helium ? 19.9e-6 : 22.8e-6)*std::pow(std::max(T,20.0)/300.0,.70);
+        }
+        double Conductivity(double T,double rho) const
+        {
+            if(Species==GasSpecies::Nitrogen) return Eos::Conductivity(T,rho);
+            // Dilute-gas transport approximation (NIST semiconductor-gas tables at 300 K); dense corrections omitted.
+            return (Species==GasSpecies::Helium ? .1559 : .0178)*std::pow(std::max(T,20.0)/300.0,.70);
+        }
+    private:
+        struct Term { double n,t,d,l,eta,beta,gamma,epsilon; };
+        struct Derivs { double a=0,d=0,t=0,dd=0,tt=0,dt=0; };
+        Derivs Residual(double tau,double delta) const
+        {
+            static constexpr Term helium[] = {
+				{ 0.015559018000000001, 1, 4, 0, 0, 0, 0, 0 },
+				{ 3.0638931999999999, 0.42499999999999999, 1, 0, 0, 0, 0, 0 },
+				{ -4.2420844000000004, 0.63, 1, 0, 0, 0, 0, 0 },
+				{ 0.054418088000000003, 0.68999999999999995, 2, 0, 0, 0, 0, 0 },
+				{ -0.18971904000000001, 1.8300000000000001, 2, 0, 0, 0, 0, 0 },
+				{ 0.087856262000000004, 0.57499999999999996, 3, 0, 0, 0, 0, 0 },
+				{ 2.2833565999999998, 0.92500000000000004, 1, 1, 0, 0, 0, 0 },
+				{ -0.53331594999999998, 1.585, 1, 2, 0, 0, 0, 0 },
+				{ -0.53296502000000001, 1.6899999999999999, 3, 2, 0, 0, 0, 0 },
+				{ 0.99444915, 1.51, 2, 1, 0, 0, 0, 0 },
+				{ -0.30078895999999999, 2.8999999999999999, 2, 2, 0, 0, 0, 0 },
+				{ -1.6432563, 0.80000000000000004, 1, 1, 0, 0, 0, 0 },
+				{ 0.80291020000000002, 1.26, 2, 0, 1.5497000000000001, 0.24709999999999999, 3.1499999999999999, 0.59599999999999997 },
+				{ 0.026838668999999999, 3.5099999999999998, 1, 0, 9.2449999999999992, 0.098299999999999998, 2.5450499999999998, 0.34229999999999999 },
+				{ 0.04687678, 2.7850000000000001, 2, 0, 4.7632300000000001, 0.15559999999999999, 1.2513000000000001, 0.76100000000000001 },
+				{ -0.14832766, 1, 1, 0, 6.3826000000000001, 2.6781999999999999, 1.9416, 0.97470000000000001 },
+				{ 0.030162109999999999, 4.2199999999999998, 1, 0, 8.7022999999999993, 2.7077, 0.59840000000000004, 0.58679999999999999 },
+				{ -0.019986041, 0.82999999999999996, 3, 0, 0.255, 0.66210000000000002, 2.2282000000000002, 0.56269999999999998 },
+				{ 0.14283514, 1.575, 2, 0, 0.3523, 0.17749999999999999, 1.6060000000000001, 2.5346000000000002 },
+				{ 0.0074182689999999999, 3.4470000000000001, 2, 0, 0.1492, 0.48209999999999997, 3.8149999999999999, 3.6762999999999999 },
+				{ -0.22989793, 0.72999999999999998, 3, 0, 0.050000000000000003, 0.30690000000000001, 1.61958, 4.5244999999999997 },
+				{ 0.79224828999999997, 1.6339999999999999, 2, 0, 0.1668, 0.17580000000000001, 0.64070000000000005, 5.0389999999999997 },
+				{ -0.049386338000000002, 6.1299999999999999, 2, 0, 42.235799999999998, 1357.6577, 1.0760000000000001, 0.95899999999999996 },
+            };
+            static constexpr Term argon[] = {
+				{ 0.088722304990011006, 0, 1, 0, 0, 0, 0, 0 },
+				{ 0.70514805167298, 0.25, 1, 0, 0, 0, 0, 0 },
+				{ -1.682011565409, 1, 1, 0, 0, 0, 0, 0 },
+				{ -0.14909014431486001, 2.75, 1, 0, 0, 0, 0, 0 },
+				{ -0.12024804600940001, 4, 1, 0, 0, 0, 0, 0 },
+				{ -0.12164978798598999, 0, 2, 0, 0, 0, 0, 0 },
+				{ 0.40035933626752002, 0.25, 2, 0, 0, 0, 0, 0 },
+				{ -0.27136062699128999, 0.75, 2, 0, 0, 0, 0, 0 },
+				{ 0.24211924579645, 2.75, 2, 0, 0, 0, 0, 0 },
+				{ 0.0057889583185569997, 0, 3, 0, 0, 0, 0, 0 },
+				{ -0.041097335615340999, 2, 3, 0, 0, 0, 0, 0 },
+				{ 0.024710761541614001, 0.75, 4, 0, 0, 0, 0, 0 },
+				{ -0.32181391750701999, 3, 1, 1, 0, 0, 0, 0 },
+				{ 0.33230017695794001, 3.5, 1, 1, 0, 0, 0, 0 },
+				{ 0.031019986287345001, 1, 3, 1, 0, 0, 0, 0 },
+				{ -0.030777086002437001, 2, 4, 1, 0, 0, 0, 0 },
+				{ 0.093891137419580994, 4, 4, 1, 0, 0, 0, 0 },
+				{ -0.090643210682031003, 3, 5, 1, 0, 0, 0, 0 },
+				{ -0.00045778349276653999, 0, 7, 1, 0, 0, 0, 0 },
+				{ -8.2659729025197004e-05, 0.5, 10, 1, 0, 0, 0, 0 },
+				{ 0.00013013415603147001, 1, 10, 1, 0, 0, 0, 0 },
+				{ -0.011397840001996, 1, 2, 2, 0, 0, 0, 0 },
+				{ -0.024455169960535001, 7, 2, 2, 0, 0, 0, 0 },
+				{ -0.064324067175954999, 5, 4, 2, 0, 0, 0, 0 },
+				{ 0.058889471093673998, 6, 4, 2, 0, 0, 0, 0 },
+				{ -0.00064933552112964997, 6, 8, 2, 0, 0, 0, 0 },
+				{ -0.013889862158435001, 10, 3, 3, 0, 0, 0, 0 },
+				{ 0.40489839296910002, 13, 5, 3, 0, 0, 0, 0 },
+				{ -0.38612519594749001, 14, 5, 3, 0, 0, 0, 0 },
+				{ -0.18817142332233, 11, 6, 3, 0, 0, 0, 0 },
+				{ 0.15977647596482, 14, 6, 3, 0, 0, 0, 0 },
+				{ 0.053985518513856003, 8, 7, 3, 0, 0, 0, 0 },
+				{ -0.028953417958014, 14, 7, 3, 0, 0, 0, 0 },
+				{ -0.013025413381384, 6, 8, 3, 0, 0, 0, 0 },
+				{ 0.0028948696775777999, 7, 9, 3, 0, 0, 0, 0 },
+				{ -0.0022647134304796001, 24, 5, 4, 0, 0, 0, 0 },
+				{ 0.0017616456196368, 22, 6, 4, 0, 0, 0, 0 },
+				{ 0.0058552454482773998, 3, 2, 0, 20, 250, 1.1100000000000001, 1 },
+				{ -0.69251908270027995, 1, 1, 0, 20, 375, 1.1399999999999999, 1 },
+				{ 1.5315490030515999, 0, 2, 0, 20, 300, 1.1699999999999999, 1 },
+				{ -0.0027380447449783002, 0, 3, 0, 20, 225, 1.1100000000000001, 1 },
+            };
+            const Term* terms=Species==GasSpecies::Helium ? helium:argon;
+            const int count=Species==GasSpecies::Helium ? 23:41;
+            Derivs f;
+            for(int i=0;i<count;++i)
+            {
+                const Term& q=terms[i]; const double dl=q.l>0 ? std::pow(delta,q.l):0.0;
+                const double val=q.n*std::pow(delta,q.d)*std::pow(tau,q.t)*std::exp(-dl-q.eta*(delta-q.epsilon)*(delta-q.epsilon)-q.beta*(tau-q.gamma)*(tau-q.gamma));
+                const double ld=q.d/delta-(q.l>0 ? q.l*dl/delta:0.0)-2*q.eta*(delta-q.epsilon);
+                const double lt=q.t/tau-2*q.beta*(tau-q.gamma);
+                const double ldd=-q.d/(delta*delta)-(q.l>0 ? q.l*(q.l-1)*dl/(delta*delta):0.0)-2*q.eta;
+                const double ltt=-q.t/(tau*tau)-2*q.beta;
+                f.a+=val; f.d+=val*ld; f.t+=val*lt; f.dd+=val*(ld*ld+ldd); f.tt+=val*(lt*lt+ltt); f.dt+=val*ld*lt;
+            }
+            return f;
+        }
+        double Ancillary(double T,int which) const
+        {
+            // CoolProp EOS-derived ancillary fit; max error 0.008% p, 0.235% liquid / 0.213% vapor density.
+            static constexpr double n[3][6] = {
+                {1.274555697445016,-6.537350082824229,2.3992572216415304,-2.853795528373302,-1.4260480922698553,-1.2865724148178292},
+                {.35549443267848707,1.7740534055789645,1.6692402958603285,-1326.972748274678,3248.4827767066654,-4246.807908907579},
+                {1.1883246645329462,-3.0995804610072724,-2.5097036910932267,.6796303921537137,-21.203752823276112,418.9717120034111} };
+            static constexpr double e[3][6] = { {.841,.944,2.449,2.797,6.335,10.499}, {.272,.417,2.551,7.589,8.392,10.436}, {.29,.329,.839,2.946,6.496,11.57} };
+            T=Clampd(T,Data().TripleK,Data().CriticalK); const double theta=1-T/Data().CriticalK;
+            double sum=0;for(int i=0;i<6;++i)sum+=n[which][i]*std::pow(theta,e[which][i]);
+            return which==0 ? Data().CriticalPa*std::exp(Data().CriticalK/T*sum) : which==1 ? Data().CriticalDensityKgM3*(1+sum) : Data().CriticalDensityKgM3*std::exp(Data().CriticalK/T*sum);
+        }
+    };
+
 	// Lowest stagnation temperature the nozzle table admits (stays on the vapour side of the dome).
 	inline double TFloor(double p) { return p < 0.999 * kPc ? Eos::TSat(p) + 1.0 : kTc + 1.0; }
 
@@ -323,15 +560,21 @@ namespace ColdGas
 		static constexpr double kEps[NE] = { 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 16.0, 20.0, 25.0 };
 		static constexpr double kPmin = 0.9e5, kPmax = 8.0e7, kTmin = 70.0, kTmax = 380.0;
 
-		static const IsentropeTable& Get() { static const IsentropeTable t; return t; }
+		static const IsentropeTable& Get(GasSpecies species = GasSpecies::Nitrogen)
+        {
+            // Lazily build independent immutable tables; no species contamination across systems or threads.
+            if(species==GasSpecies::Helium) { static const IsentropeTable h(GasSpecies::Helium); return h; }
+            if(species==GasSpecies::Argon) { static const IsentropeTable a(GasSpecies::Argon); return a; }
+            static const IsentropeTable n(GasSpecies::Nitrogen); return n;
+        }
 
 		struct Cell { int o; double w00, w01, w10, w11; double p0, T0; };
 		Cell Locate(double p0, double T0) const
 		{
 			Cell c{};
 			p0 = Clampd(p0, kPmin, kPmax);
-			T0 = Clampd(std::max(T0, TFloor(p0)), kTmin, kTmax);
-			const double x = (std::log(p0) - LnPmin) / DLnP, y = (T0 - kTmin) / DT;
+			T0 = Clampd(std::max(T0, Thermo.Floor(p0)), Tmin, Tmax);
+			const double x = (std::log(p0) - LnPmin) / DLnP, y = (T0 - Tmin) / DT;
 			const int i = std::min(NP - 2, std::max(0, (int)x)), j = std::min(NT - 2, std::max(0, (int)y));
 			const double fx = Clampd(x - i, 0.0, 1.0), fy = Clampd(y - j, 0.0, 1.0);
 			c.o = i * NT + j;
@@ -365,6 +608,8 @@ namespace ColdGas
 		}
 
 	private:
+		Thermodynamics Thermo;
+        double Tmin=70, Tmax=380;
 		double LnPmin = 0, DLnP = 0, DT = 0;
 		std::vector<float> Cs, Mu, Pr, Vr, Tr;
 
@@ -374,9 +619,9 @@ namespace ColdGas
 			return c.w00 * a[o * stride + k] + c.w01 * a[(o + 1) * stride + k] + c.w10 * a[(o + NT) * stride + k] + c.w11 * a[(o + NT + 1) * stride + k];
 		}
 
-		IsentropeTable()
+		explicit IsentropeTable(GasSpecies species) : Thermo(species), Tmin(species==GasSpecies::Helium ? 20.0:kTmin), Tmax(species==GasSpecies::Helium ? 500.0:kTmax)
 		{
-			LnPmin = std::log(kPmin); DLnP = (std::log(kPmax) - LnPmin) / (NP - 1); DT = (kTmax - kTmin) / (NT - 1);
+			LnPmin = std::log(kPmin); DLnP = (std::log(kPmax) - LnPmin) / (NP - 1); DT = (Tmax - Tmin) / (NT - 1);
 			Cs.assign(NP * NT, 0.f); Mu.assign(NP * NT, 0.f);
 			Pr.assign(NP * NT * NE, 0.f); Vr.assign(NP * NT * NE, 0.f); Tr.assign(NP * NT * NE, 0.f);
 			for (int i = 0; i < NP; ++i)
@@ -390,10 +635,10 @@ namespace ColdGas
 		{
 			const int idx = i * NT + j;
 			const double p0 = std::exp(LnPmin + i * DLnP);
-			const double T0 = std::max(kTmin + j * DT, TFloor(p0));
-			const double v0 = Eos::VFromPT(p0, T0);
-			const Eos::Props P0 = Eos::Evaluate(T0, v0);
-			const double s0 = P0.s, h0 = P0.h, sRT = std::sqrt(kR * T0);
+			const double T0 = std::max(Tmin + j * DT, Thermo.Floor(p0));
+			const double v0 = Thermo.VFromPT(p0, T0);
+			const Eos::Props P0 = Thermo.Evaluate(T0, v0);
+			const double s0 = P0.s, h0 = P0.h, sRT = std::sqrt(Thermo.R() * T0);
 			Mu[idx] = (float)P0.muJT;
 			struct S { double x, p, T, vel, G; };
 			S w[3]{}; int nw = 0; bool peak = false; double Gs = 0.0; S prev{}; double epsPrev = 1.0; int k = 1;
@@ -459,13 +704,13 @@ namespace ColdGas
 					double Tn = T * std::exp(-0.4 * dx);
 					for (int m = 0; m < 30; ++m)
 					{
-						const double dT = (s0 - Eos::S(Tn, v)) * Tn / Eos::Cv(Tn, v);
+						const double dT = (s0 - Thermo.S(Tn, v)) * Tn / Thermo.Cv(Tn, v);
 						Tn += Clampd(dT, -0.3 * Tn, 0.3 * Tn);
 						if (std::fabs(dT) < 1e-11 * Tn) break;
 					}
-					bool ok = std::isfinite(Tn) && Tn > 6.0 && Eos::DPDv(Tn, v) < 0.0;
+					bool ok = std::isfinite(Tn) && Tn > 6.0 && Thermo.DPDv(Tn, v) < 0.0;
 					double p = 0.0, hh = 0.0;
-					if (ok) { p = Eos::Pressure(Tn, v); hh = Eos::U(Tn, v) + p * v; ok = p > 0.0 && std::isfinite(hh); }
+					if (ok) { p = Thermo.Pressure(Tn, v); hh = Thermo.U(Tn, v) + p * v; ok = p > 0.0 && std::isfinite(hh); }
 					if (!ok) { ideal = true; continue; }
 					lnv += dx; T = Tn;
 					const double vel = std::sqrt(std::max(0.0, 2.0 * (h0 - hh)));
@@ -473,12 +718,12 @@ namespace ColdGas
 				}
 				else
 				{
-					const double cp = Eos::CvIdeal(last.T) + kR;
+					const double cp = Thermo.CvIdeal(last.T) + Thermo.R();
 					const double Tn = last.T * 0.99;
 					if (Tn < 1.0) break;
-					const double p = last.p * std::pow(Tn / last.T, cp / kR);
+					const double p = last.p * std::pow(Tn / last.T, cp / Thermo.R());
 					const double vel = std::sqrt(last.vel * last.vel + 2.0 * cp * (last.T - Tn));
-					const double v = kR * Tn / p;
+					const double v = Thermo.R() * Tn / p;
 					s = { std::log(v), p, Tn, vel, vel / v };
 				}
 				last = s;
@@ -553,6 +798,7 @@ namespace ColdGas
 
 	struct Config
 	{
+        GasSpecies Propellant = GasSpecies::Nitrogen;
 		int NumTanks = 1;
 		TankSpec Tank[2];
 		NozzleSpec Nozzle[kNumNozzles];
@@ -688,9 +934,10 @@ namespace ColdGas
 	public:
 		static constexpr int kWallNodes = 10;
 
-		explicit System(const Config& cfg = Config::Thrust()) : C(cfg)
+		explicit System(const Config& cfg = Config::Thrust()) : C(cfg), Thermo(IsValidGasSpecies(cfg.Propellant) ? cfg.Propellant : GasSpecies::Nitrogen)
 		{
-			(void)IsentropeTable::Get();
+			C.Propellant=Thermo.Species;
+            (void)IsentropeTable::Get(C.Propellant);
 			NumTanks = std::max(1, std::min(2, C.NumTanks));
 			for (int i = 0; i < kNumNozzles; ++i)
 			{
@@ -698,16 +945,16 @@ namespace ColdGas
 				if (!n.bPresent) continue;
 				IsentropeTable::EpsIndex(n.AreaRatio(), Nz[i].kE, Nz[i].fE);
 				// subsonic isentropic pressure ratio at the exit area ratio: throat unchokes below pa / prSub
-				const double eps = n.AreaRatio();
+				const double eps = n.AreaRatio(), gamma=Thermo.Data().IdealGamma;
 				double lo = 1e-4, hi = 1.0;
 				for (int it = 0; it < 80; ++it)
 				{
 					const double M = 0.5 * (lo + hi);
-					const double ar = (1.0 / M) * std::pow((2.0 / 2.4) * (1.0 + 0.2 * M * M), 3.0);
+					const double ar = C.Propellant==GasSpecies::Nitrogen ? (1.0 / M) * std::pow((2.0 / 2.4) * (1.0 + 0.2 * M * M), 3.0) : (1.0 / M) * std::pow((2.0 / (gamma+1.0)) * (1.0 + .5*(gamma-1.0) * M * M), (gamma+1.0)/(2.0*(gamma-1.0)));
 					(ar > eps ? lo : hi) = M;
 				}
 				const double Ms = 0.5 * (lo + hi);
-				Nz[i].prSub = std::pow(1.0 + 0.2 * Ms * Ms, -3.5);
+				Nz[i].prSub = (C.Propellant==GasSpecies::Nitrogen ? std::pow(1.0 + 0.2 * Ms * Ms, -3.5) : std::pow(1.0 + .5*(gamma-1.0) * Ms * Ms, -gamma/(gamma-1.0)));
 			}
 			for (int t = 0; t < NumTanks; ++t) BuildWall(t);
 			Man.V = C.ManifoldVolumeL * 1e-3;
@@ -725,8 +972,8 @@ namespace ColdGas
 			{
 				Gas& g = Tk[t];
 				g.V = C.Tank[t].VolumeL * 1e-3;
-				const double v = Eos::VFromPT(bar * kBarPa, kelvin);
-				g.m = g.V / v; g.U = g.m * Eos::U(kelvin, v); g.T = kelvin;
+				const double v = Thermo.VFromPT(bar * kBarPa, kelvin);
+				g.m = g.V / v; g.U = g.m * Thermo.U(kelvin, v); g.T = kelvin;
 				Solve(g);
 				for (int k = 0; k < kWallNodes; ++k) Wall[t].T[k] = kelvin;
 				Cutoff[t] = false; Relief[t] = false;
@@ -737,8 +984,8 @@ namespace ColdGas
 				// regulator lock-up at the fill temperature, valves settled, so the car is "Boost Ready" immediately.
 				const double plock = C.RegSetpointBar * kBarPa * (1.0 + C.RegLockupFrac);
 				const double pm = bArmed ? std::min(plock, bar * kBarPa) : kPatm;
-				const double v = Eos::VFromPT(pm, kelvin);
-				Man.m = Man.V / v; Man.U = Man.m * Eos::U(kelvin, v); Man.T = kelvin;
+				const double v = Thermo.VFromPT(pm, kelvin);
+				Man.m = Man.V / v; Man.U = Man.m * Thermo.U(kelvin, v); Man.T = kelvin;
 				Solve(Man);
 				ManWallT = kelvin;
 				if (bArmed)
@@ -754,6 +1001,33 @@ namespace ColdGas
 			ResetCounters();
 			UpdateTelemetry(kPatm);
 		}
+
+        // A pit experiment resets burst state and refills every installed vessel at the common (p,T).
+        // Hardware rating is independent of gas species; temperature is bounded to the tested fill range.
+        bool ConfigureExperiment(GasSpecies species, double pressureBar, double temperatureK = kAmbientK)
+        {
+            if(!IsValidGasSpecies(species) || !std::isfinite(pressureBar) || !std::isfinite(temperatureK)
+                || pressureBar < kPatm/kBarPa || pressureBar > MaxFillPressureBar() || temperatureK < 200.0 || temperatureK > 350.0) return false;
+            Config cfg=C;cfg.Propellant=species; System fresh(cfg); fresh.SetArmed(bArmed);
+            fresh.Fill(pressureBar,temperatureK); *this=fresh; return true;
+        }
+        // Tank amount is an alternate input: volume and T determine density, and EOS determines pressure.
+        // No mass is added while retaining an incompatible pressure. Total excludes the separate feed manifold.
+        bool FillByMassKg(double tankMassKg, double temperatureK = kAmbientK)
+        {
+            if(!std::isfinite(tankMassKg) || tankMassKg<=0 || !std::isfinite(temperatureK) || temperatureK<200 || temperatureK>350) return false;
+            double volume=0;for(int t=0;t<NumTanks;++t)volume+=C.Tank[t].VolumeL*1e-3;
+            const double pressure=Thermo.Pressure(temperatureK,volume/tankMassKg)/kBarPa;
+            if(!std::isfinite(pressure) || pressure<kPatm/kBarPa-1e-8 || pressure>MaxFillPressureBar()+1e-8) return false;
+            return ConfigureExperiment(C.Propellant,Clampd(pressure,kPatm/kBarPa,MaxFillPressureBar()),temperatureK);
+        }
+        GasSpecies Propellant() const { return C.Propellant; }
+        const GasProperties& PropellantProperties() const { return Thermo.Data(); }
+        double MaxFillPressureBar() const
+        {
+            double rating=690.0;for(int t=0;t<NumTanks;++t)rating=std::min(rating,C.Tank[t].MEOPBar);return rating;
+        }
+
 		void ResetCounters()
 		{
 			M0 = TotalGasMass(); E0 = TotalGasEnergy() + TotalWallEnergy();
@@ -857,7 +1131,7 @@ namespace ColdGas
 			for (int t = 0; t < NumTanks; ++t) if (Tk[t].p > pt) { pt = Tk[t].p; Tt = Tk[t].T; }
 			const double p = std::min(pt, std::max(Dome, C.RegSetpointBar * kBarPa));
 			if (p <= pa * 1.01) return 0.0;
-			const Eos::Props P = Eos::EvaluatePT(p, std::max(Tt, TFloor(p)));
+			const Eos::Props P = Thermo.EvaluatePT(p, std::max(Tt, Thermo.Floor(p)));
 			const NozzleOutput o = EvalNozzle(i, 1.0, p, P.T, P.rho, pa);
 			return o.MassFlowKgS > 0 ? o.ThrustN / (o.MassFlowKgS * kG0) : 0.0;
 		}
@@ -868,7 +1142,7 @@ namespace ColdGas
 			for (int t = 0; t < NumTanks; ++t)
 			{
 				if (Cutoff[t]) continue;
-				const double rmin = 1.0 / Eos::VFromPT(C.MinTankBar * kBarPa, std::max(Tk[t].T, TFloor(C.MinTankBar * kBarPa)));
+				const double rmin = 1.0 / Thermo.VFromPT(C.MinTankBar * kBarPa, std::max(Tk[t].T, Thermo.Floor(C.MinTankBar * kBarPa)));
 				m += std::max(0.0, Tk[t].m - rmin * Tk[t].V);
 			}
 			return m;
@@ -894,7 +1168,7 @@ namespace ColdGas
 		// Single-point nozzle evaluation for an arbitrary manifold state (used by the harness for design checks).
 		NozzleOutput Evaluate(int i, double stroke, double manifoldPa, double manifoldK, double pa = kPatm) const
 		{
-			const Eos::Props P = Eos::EvaluatePT(manifoldPa, manifoldK);
+			const Eos::Props P = Thermo.EvaluatePT(manifoldPa, manifoldK);
 			NozzleOutput o = EvalNozzle(i, stroke, manifoldPa, manifoldK, P.rho, pa);
 			o.ExitVelocity = o.MassFlowKgS > 0 ? o.ThrustN / o.MassFlowKgS : 0;
 			return o;
@@ -923,6 +1197,7 @@ namespace ColdGas
 		struct NozzleCache { int kE = 0; double fE = 0, prSub = 0.99, prevW = 0, accF = 0, accW = 0, lastPlenum = 0; };
 
 		Config C;
+        Thermodynamics Thermo;
 		int NumTanks = 1;
 		Gas Tk[2], Man;
 		WallModel Wall[2];
@@ -942,6 +1217,13 @@ namespace ColdGas
 		double M0 = 0, E0 = 0, Mout = 0, Mvent = 0, Hout = 0, Hvent = 0, Qamb = 0;
 		double Impulse = 0, BankImpulse[3] = { 0, 0, 0 };
 
+
+        double Restriction(double area,double p1,double rho1,double p2,double xT) const
+        {
+            const double limit=C.Propellant==GasSpecies::Nitrogen ? xT : std::min(.99,xT*Thermo.Data().IdealGamma/1.4);
+            return Orifice(area,p1,rho1,p2,limit);
+        }
+
 		static int Clampi(int i) { return i < 0 ? 0 : (i >= kNumNozzles ? kNumNozzles - 1 : i); }
 
 		double TotalGasMass() const { double m = Man.m; for (int t = 0; t < NumTanks; ++t) m += Tk[t].m; return m; }
@@ -954,27 +1236,27 @@ namespace ColdGas
 		}
 
 		// ------------------------------------------------------------------ thermodynamic state of a control volume
-		static void Solve(Gas& g)
+		void Solve(Gas& g) const
 		{
 			const double v = g.V / std::max(g.m, 1e-12), u = g.U / std::max(g.m, 1e-12);
-			double T1 = Eos::TFromUV(u, std::max(v, Eos::kVMin), g.T);
+			double T1 = Thermo.TFromUV(u, std::max(v, Thermo.MinVolume()), g.T);
 			// phase boundary at this specific volume: dew temperature (v > v_c) or bubble temperature (v < v_c)
 			const double rho = 1.0 / v;
-			double Tb = kTtriple;
+			double Tb = Thermo.Data().TripleK;
 			bool inDome = false;
-			if (T1 < kTc && rho > Eos::RhoVapSat(kTtriple) && rho < Eos::RhoLiqSat(kTtriple))
+			if (C.Propellant != GasSpecies::Helium && T1 < Thermo.Data().CriticalK && rho > Thermo.RhoVapSat(Thermo.Data().TripleK) && rho < Thermo.RhoLiqSat(Thermo.Data().TripleK))
 			{
-				const double Tq = std::max(T1, kTtriple);   // ancillary densities are monotone: one test at T1 decides
-				inDome = T1 < kTtriple || (rho < kRhoc ? Eos::RhoVapSat(Tq) < rho : Eos::RhoLiqSat(Tq) > rho);
+				const double Tq = std::max(T1, Thermo.Data().TripleK);   // ancillary densities are monotone: one test at T1 decides
+				inDome = T1 < Thermo.Data().TripleK || (rho < Thermo.Data().CriticalDensityKgM3 ? Thermo.RhoVapSat(Tq) < rho : Thermo.RhoLiqSat(Tq) > rho);
 			}
 			if (inDome)
 			{
-				double lo = kTtriple, hi = kTc - 1e-4;
-				const bool vap = rho < kRhoc;
+				double lo = Thermo.Data().TripleK, hi = Thermo.Data().CriticalK - 1e-4;
+				const bool vap = rho < Thermo.Data().CriticalDensityKgM3;
 				for (int it = 0; it < 48; ++it)
 				{
 					const double m = 0.5 * (lo + hi);
-					const bool inside = vap ? Eos::RhoVapSat(m) < rho : Eos::RhoLiqSat(m) > rho;   // m still below the boundary
+					const bool inside = vap ? Thermo.RhoVapSat(m) < rho : Thermo.RhoLiqSat(m) > rho;   // m still below the boundary
 					(inside ? lo : hi) = m;
 				}
 				Tb = 0.5 * (lo + hi);
@@ -982,18 +1264,18 @@ namespace ColdGas
 			const bool two = inDome && T1 < Tb;
 			if (!two)
 			{
-				const Eos::Props P = Eos::Evaluate(T1, std::max(v, Eos::kVMin));
+				const Eos::Props P = Thermo.Evaluate(T1, std::max(v, Thermo.MinVolume()));
 				g.T = T1; g.p = P.p; g.rho = P.rho; g.h = P.h; g.w = P.w; g.cp = P.cp; g.beta = P.beta; g.quality = 1; g.bTwoPhase = false;
 				return;
 			}
 			// vapour + condensate in equilibrium: solve u = x u''(T) + (1-x) u'(T), x from the volume constraint
 			auto umix = [&](double T, double& x, double& vv)
 			{
-				vv = 1.0 / Eos::RhoVapSat(T); const double vl = 1.0 / Eos::RhoLiqSat(T);
+				vv = 1.0 / Thermo.RhoVapSat(T); const double vl = 1.0 / Thermo.RhoLiqSat(T);
 				x = Clampd((v - vl) / std::max(vv - vl, 1e-12), 0.0, 1.0);
-				return x * Eos::U(T, vv) + (1.0 - x) * Eos::U(T, std::max(vl, Eos::kVMin));
+				return x * Thermo.U(T, vv) + (1.0 - x) * Thermo.U(T, std::max(vl, Thermo.MinVolume()));
 			};
-			double a = kTtriple, b = Tb, x = 1, vv = v;
+			double a = Thermo.Data().TripleK, b = Tb, x = 1, vv = v;
 			double fa = umix(a, x, vv) - u, fb = umix(b, x, vv) - u, Tm = T1;
 			if (fa >= 0) Tm = a; else if (fb <= 0) Tm = b;
 			else
@@ -1009,8 +1291,8 @@ namespace ColdGas
 				}
 			}
 			umix(Tm, x, vv);
-			const Eos::Props Pv = Eos::Evaluate(Tm, vv);
-			g.T = Tm; g.p = Eos::PSat(Tm); g.rho = 1.0 / v; g.h = Pv.u + g.p * vv;   // vapour is drawn off
+			const Eos::Props Pv = Thermo.Evaluate(Tm, vv);
+			g.T = Tm; g.p = Thermo.PSat(Tm); g.rho = 1.0 / v; g.h = Pv.u + g.p * vv;   // vapour is drawn off
 			g.w = Pv.w; g.cp = Pv.cp; g.beta = Pv.beta; g.quality = x; g.bTwoPhase = true;
 		}
 
@@ -1049,7 +1331,7 @@ namespace ColdGas
 		// Turbulent natural convection inside the vessel: h = 0.13 k (g beta dT rho^2 cp / (mu k))^(1/3).
 		double InnerHtc(const Gas& g, double dT) const
 		{
-			const double k = Eos::Conductivity(g.T, g.rho), mu = Eos::Viscosity(g.T, g.rho);
+			const double k = Thermo.Conductivity(g.T, g.rho), mu = Thermo.Viscosity(g.T, g.rho);
 			const double grp = C.BuoyancyG * std::fabs(g.beta) * std::fabs(dT) * g.rho * g.rho * g.cp / (mu * k);
 			return std::max(2.0, 0.13 * k * std::cbrt(grp));
 		}
@@ -1085,10 +1367,10 @@ namespace ColdGas
 				for (int t = 0; t < NumTanks; ++t)
 				{
 					if (A[t] <= 0) { W[t] = 0; continue; }
-					W[t] = Tk[t].p >= ph ? Orifice(A[t], Tk[t].p, Tk[t].rho, ph, C.IsoXt) : -Orifice(A[t], ph, rhoH, Tk[t].p, C.IsoXt);
+					W[t] = Tk[t].p >= ph ? Restriction(A[t], Tk[t].p, Tk[t].rho, ph, C.IsoXt) : -Restriction(A[t], ph, rhoH, Tk[t].p, C.IsoXt);
 					sum += W[t];
 				}
-				return sum - Orifice(Ar, ph, rhoH, pm, C.RegXt);
+				return sum - Restriction(Ar, ph, rhoH, pm, C.RegXt);
 			};
 			double lo = std::min(pmin, pm), hi = pmax;
 			double flo = g(lo), fhi = g(hi), ph = hi;
@@ -1129,13 +1411,14 @@ namespace ColdGas
 			NozzleOutput o; o.Valve = stroke;
 			const NozzleSpec& nz = C.Nozzle[i];
 			if (!nz.bPresent || stroke <= 1e-9 || pm <= pa * (1.0 + 1e-6) || rhom <= 0.0) return o;
-			const IsentropeTable& tab = IsentropeTable::Get();
+			const IsentropeTable& tab = IsentropeTable::Get(C.Propellant);
 			const NozzleCache& nc = Nz[i];
 			const double At = nz.ThroatArea(), Ae = nz.ExitArea(), Al = nz.LineArea();
 			const double Av = stroke * nz.Valve.AreaRatio * At;
 			const double Aeq = 1.0 / std::sqrt(1.0 / (Av * Av) + nz.LineK / (Al * Al));
 			const double mu = tab.MuJT(tab.Locate(pm, Tm));
 			const double xT = nz.Valve.xT;
+            const double gamma=Thermo.Data().IdealGamma, exponent=C.Propellant==GasSpecies::Nitrogen ? 2.0/7.0:(gamma-1.0)/gamma, twiceCp=C.Propellant==GasSpecies::Nitrogen ? 7.0*Thermo.R():2.0*gamma/(gamma-1.0)*Thermo.R();
 			struct TF { double W = 0, T0 = 0; IsentropeTable::Cell cell{}; bool choked = false; };
 			auto throat = [&](double pc, TF& r)
 			{
@@ -1143,20 +1426,20 @@ namespace ColdGas
 				r.cell = tab.Locate(pc, Tc); r.T0 = r.cell.T0;
 				if (pc * nc.prSub >= pa)
 				{
-					r.W = nz.Cd * At * tab.Cstar(r.cell) * pc / std::sqrt(kR * r.T0); r.choked = true;
+					r.W = nz.Cd * At * tab.Cstar(r.cell) * pc / std::sqrt(Thermo.R() * r.T0); r.choked = true;
 				}
 				else
 				{
-					const double Te = r.T0 * std::pow(pa / pc, 2.0 / 7.0);
-					const double ve = std::sqrt(std::max(0.0, 7.0 * kR * (r.T0 - Te)));
-					r.W = nz.Cd * Ae * pa / (kR * Te) * ve; r.choked = false;
+					const double Te = r.T0 * std::pow(pa / pc, exponent);
+					const double ve = std::sqrt(std::max(0.0, twiceCp * (r.T0 - Te)));
+					r.W = nz.Cd * Ae * pa / (Thermo.R() * Te) * ve; r.choked = false;
 				}
 				return r.W;
 			};
 			TF tf;
 			// plenum pressure: valve flow (decreasing in pc) = throat flow (increasing in pc)
 			double lo = pa, hi = pm;
-			double flo = Orifice(Aeq, pm, rhom, lo, xT), fhi = -throat(hi, tf);
+			double flo = Restriction(Aeq, pm, rhom, lo, xT), fhi = -throat(hi, tf);
 			double pc = hi;
 			if (flo <= 0.0) pc = lo;
 			else
@@ -1165,7 +1448,7 @@ namespace ColdGas
 				for (int it = 0; it < 60; ++it)
 				{
 					pc = (lo * fhi - hi * flo) / (fhi - flo);
-					const double f = Orifice(Aeq, pm, rhom, pc, xT) - throat(pc, tf);
+					const double f = Restriction(Aeq, pm, rhom, pc, xT) - throat(pc, tf);
 					if (std::fabs(f) < 1e-10 * (tf.W + 1e-9) || hi - lo < 1e-10 * pm) break;
 					if (f < 0) { hi = pc; fhi = f; if (side == 1) flo *= 0.5; side = 1; }
 					else { lo = pc; flo = f; if (side == -1) fhi *= 0.5; side = -1; }
@@ -1173,7 +1456,7 @@ namespace ColdGas
 			}
 			const double W = throat(pc, tf);
 			if (W <= 0.0) return o;
-			const double T0 = tf.T0, sRT = std::sqrt(kR * T0);
+			const double T0 = tf.T0, sRT = std::sqrt(Thermo.R() * T0);
 			double F = 0, pe = pa, ve = 0, Te = T0;
 			bool sep = false;
 			if (tf.choked)
@@ -1208,8 +1491,8 @@ namespace ColdGas
 			}
 			else
 			{
-				Te = T0 * std::pow(pa / pc, 2.0 / 7.0);
-				ve = std::sqrt(std::max(0.0, 7.0 * kR * (T0 - Te)));
+				Te = T0 * std::pow(pa / pc, exponent);
+				ve = std::sqrt(std::max(0.0, twiceCp * (T0 - Te)));
 				pe = pa; F = nz.EtaV * W * ve;
 			}
 			o.ThrustN = std::max(0.0, F);
@@ -1218,8 +1501,8 @@ namespace ColdGas
 			o.ExitVelocity = o.ThrustN / W;
 			o.PlumeTempK = Te;
 			o.ExitPressurePa = pe;
-			o.ExitMach = ve / std::sqrt(1.4 * kR * std::max(Te, 1.0));
-			o.Supersaturation = Te < kTc ? pe / Eos::PSatExtended(Te) : 0.0;
+			o.ExitMach = ve / std::sqrt(gamma * Thermo.R() * std::max(Te, 1.0));
+			o.Supersaturation = C.Propellant != GasSpecies::Helium && Te < Thermo.Data().CriticalK ? pe / Thermo.PSatExtended(Te) : 0.0;
 			o.PlenumBar = pc / kBarPa; o.PlenumK = T0;
 			o.ThrustFrac = nz.RatedThrustN > 0 ? o.ThrustN / nz.RatedThrustN : 0.0;
 			o.bChoked = tf.choked; o.bSeparated = sep;
@@ -1347,7 +1630,7 @@ namespace ColdGas
 			// manifold gas <- line/accumulator walls: natural convection, or Dittus-Boelter with the through-flow
 			{
 				const double dT = ManWallT - Man.T;
-				const double k = Eos::Conductivity(Man.T, Man.rho), mu = Eos::Viscosity(Man.T, Man.rho);
+				const double k = Thermo.Conductivity(Man.T, Man.rho), mu = Thermo.Viscosity(Man.T, Man.rho);
 				const double D = C.ManifoldLineDiaM, Wthru = std::max(HdrWreg, 0.0);
 				const double Re = 4.0 * Wthru / (kPiCG * D * mu), Pr = mu * Man.cp / k;
 				const double hf = 0.023 * std::pow(std::max(Re, 1.0), 0.8) * std::pow(Pr, 0.4) * k / D;
@@ -1408,7 +1691,7 @@ namespace ColdGas
 				if (g.p < 0.95 * C.Tank[t].ReliefBar * kBarPa) Relief[t] = false;
 				if (Relief[t])
 				{
-					const double Wv = Orifice(C.Tank[t].ReliefAreaM2, g.p, g.rho, pa, 0.53);
+					const double Wv = Restriction(C.Tank[t].ReliefAreaM2, g.p, g.rho, pa, 0.53);
 					g.m -= h * Wv; g.U -= h * Wv * g.h;
 					Mvent += h * Wv; Hvent += h * Wv * g.h;
 				}

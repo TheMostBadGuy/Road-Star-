@@ -182,29 +182,8 @@ def tail_lights(M):
 def side_details(M):
     bm = bmesh.new()
     for side in (1, -1):
-        # amber side marker just behind the front wheel (OFFICIAL photo), x 0.99..1.13, z ~0.583
-        pts = [body_point(x, 4, 5, 0.42, side, out=0.003) for x in (1.13, 1.06, 0.99)]
-        ribbon(bm, pts, 0.014, lambda p, s=side: Vector((0, s, 0.1)).normalized(), mat=0)
-        # barge-board slot (black) at the door leading edge
-        pts = [body_point(x, 4, 5, 0.55, side, out=0.003) for x in (0.985, 0.94, 0.89)]
-        ribbon(bm, pts, 0.03, lambda p, s=side: Vector((0, s, 0.1)).normalized(), mat=1)
-        # door shut lines: front edge (slanted) and the mid-door cut (from the side photo)
-        for (x0, z0, x1, z1) in ((0.87, 0.673, 0.775, 0.254), (-0.36, 0.876, -0.20, 0.296)):   # side photo
-            pts = []
-            for i in range(12):
-                t = i / 11
-                x = x0 + (x1 - x0) * t
-                z = z0 + (z1 - z0) * t
-                # find the side surface point at height z between rows 3 and 5
-                best = None
-                for k in range(41):
-                    tt = k / 40
-                    for ra, rb in ((3, 4), (4, 5), (5, 6)):
-                        p = body_point(x, ra, rb, tt, side, out=0.0015)
-                        if best is None or abs(p.z - z) < abs(best.z - z):
-                            best = p
-                pts.append(best)
-            ribbon(bm, pts, 0.004, lambda p, s=side: Vector((0, s, 0)), mat=1)
+        # The amber marker + black winglet strip are roadster_transform.winglet(); the door shut lines are real cuts
+        # (roadster_transform.cut_doors), so neither is painted on here any more.
         # canopy frame bars on the glass (side photo, 2.251 mm/px): a double bar at the front of the door glass
         # and another where the door glass meets the rear quarter glass (both slant forward towards the roof)
         for (x0, z0, x1, z1, w) in ((0.755, 0.788, 0.41, 1.092, 0.010), (0.654, 0.786, 0.296, 1.108, 0.010),

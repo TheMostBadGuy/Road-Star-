@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "RoadsterGamepad.h"
+#include "RoadsterPhysics.h"
 #include "RoadsterController.generated.h"
 
 class ARoadsterPawn;
@@ -18,6 +20,7 @@ class ROADSTERSIM_API ARoadsterController : public APlayerController
 public:
 	ARoadsterController();
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void PlayerTick(float DeltaTime) override;
 
 	EUIMode Mode = EUIMode::Title;
@@ -43,6 +46,18 @@ public:
 	bool bAutopilot = false;
 	float AutoSpeedScale = 1.f;
 
+	// Saved locally in Saved/Config/Windows/RoadsterControls.ini.
+	float SteeringDeadzone = .10f, StickExponent = 1.5f, CameraSensitivity = 1.f;
+	bool bHapticsEnabled = true;
+	void SaveControlSettings();
+	FString GetControlDeviceLabel() const;
+	FString GetStuntStatus() const;
+	FString StuntPresetName() const;
+	bool IsRecording() const { return bRecording; }
+	bool IsReplaying() const { return bReplaying; }
+	bool IsStuntActive() const { return bPresetPlaying; }
+	bool IsVirtualCursorActive() const { return bVirtualCursor; }
+
 private:
 	int32 AutoIndex = 0;
 	TArray<float> ShotTimes;
@@ -59,10 +74,45 @@ private:
 	float Steer = 0.f, Throttle = 0.f, Brake = 0.f;
 	float BrakeHoldAtRest = 0.f;
 	bool bReverseLatch = false;
+	FRoadsterGamepad NativePad;
+	bool bControlFocused = true, bNativeWasConnected = false;
+	FDelegateHandle InputConnectionHandle;
+	TAtomic<bool> bDeviceDisconnectedPending{false};
+	bool bVirtualCursor = false, bBlockPadActionsUntilRelease = false;
+	bool bBlockSpaceUntilRelease = false;
+	bool bManualPilotInput = false;
+	FVector2D PreviousPhysicalMouse = FVector2D::ZeroVector;
+	float PadSteer = 0.f, HapticLow = 0.f, HapticHigh = 0.f, HapticTimer = 0.f;
+	float CameraDeadzone = .12f;
+	void LoadControlSettings();
+	void UpdateCursor(float Dt);
+	void UpdateHaptics(float Dt);
+	void StopHapticsNow();
+	FDynamicForceFeedbackHandle LowFeedbackHandle = 0, HighFeedbackHandle = 0;
+	void ToggleHover();
+	void CancelPilot(const FString& Reason = TEXT(""));
+	void ApplyPilotSequence(float Dt);
+	void StartPreset();
+	void ToggleRecording();
+	void SaveRecording();
+	void ReplayLastRecording();
+	void RunControlCheck();
+	struct FRecordedInput
+	{
+		float Time = 0.f;
+		Roadster::Inputs Input;
+		bool bHover = false, bRoadstar = false;
+		double HoverAltitude = 0;
+	};
+	TArray<FRecordedInput> RecordedInputs;
+	FString LastRecordingFile;
+	bool bRecording = false, bReplaying = false, bPresetPlaying = false, bSavedFlightAssist = true;
+	float SequenceTime = 0.f;
+	int32 ReplayIndex = 0, SelectedStuntPreset = 0;
 
 	void DriveInput(float Dt);
 	void BuilderInput(float Dt);
-	bool Pressed(const FKey& K) const { return WasInputKeyJustPressed(K); }
-	bool Down(const FKey& K) const { return IsInputKeyDown(K); }
-	float Axis(const FKey& K) const { return GetInputAnalogKeyState(K); }
+	bool Pressed(const FKey& K) const;
+	bool Down(const FKey& K) const;
+	float Axis(const FKey& K) const;
 };

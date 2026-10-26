@@ -1,0 +1,3 @@
+Nitrogen | first table/system build 0.070381 s | 1 simulated second idle 0.000850 wall s | 1 simulated second boost 0.014546 wall s | cached reconfigure 0.000039 s
+Helium | first table/system build 3.078681 s | 1 simulated second idle 0.009751 wall s | 1 simulated second boost 0.044818 wall s | cached reconfigure 0.000084 s
+Argon | first table/system build 3.792081 s | 1 simulated second idle 0.027699 wall s | 1 simulated second boost 0.118644 wall s | cached reconfigure 0.000180 s

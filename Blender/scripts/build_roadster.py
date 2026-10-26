@@ -17,6 +17,10 @@ import roadster_interior
 importlib.reload(roadster_interior)
 import roadster_wheels
 importlib.reload(roadster_wheels)
+import roadster_coldgas
+importlib.reload(roadster_coldgas)
+import roadster_transform as RT
+importlib.reload(RT)
 import json
 import roadster_materials
 importlib.reload(roadster_materials)
@@ -99,8 +103,8 @@ def headlight_pocket_cutter(side, M):
     return ob
 
 
-def front_lights(M):
-    """Nose LED bar under the hood lip and the pop-down headlight units inside the facet pockets."""
+def front_lights(M, pockets):
+    """Nose LED bar under the hood lip and the jewel headlight modules on the rear walls of the pop-down pockets."""
     bm = bmesh.new()
 
     def quad(p0, p1, p2, p3, mat):
@@ -115,26 +119,13 @@ def front_lights(M):
         xa = x0 - 0.012 * (abs(ya) / 0.645) ** 4
         xb = x0 - 0.012 * (abs(yb) / 0.645) ** 4
         quad(Vector((xa, ya, 0.4485)), Vector((xb, yb, 0.4485)), Vector((xb, yb, 0.4555)), Vector((xa, ya, 0.4555)), 0)
-    for side in (1, -1):
-        a, b, c, nrm = headlight_frame(side)
-        depth = 0.028
-        A, B, C = a - nrm * depth, b - nrm * depth, c - nrm * depth
-        # reflector bowl (aluminium) on the pocket floor
-        f = bm.faces.new([bm.verts.new(p) for p in (A, B, C)])
-        f.material_index = 2
-        # slim LED module: a row of 6 projector cells along the top edge, plus a thin DRL line
-        top_dir = (B - A)
-        down = ((C - (A + B) * 0.5)).normalized()
-        for k in range(6):
-            t0, t1 = 0.10 + k * 0.135, 0.10 + k * 0.135 + 0.09
-            p0 = A + top_dir * t0 + down * 0.012 + nrm * 0.004
-            p1 = A + top_dir * t1 + down * 0.012 + nrm * 0.004
-            quad(p0, p1, p1 + down * 0.016, p0 + down * 0.016, 0)
-        quad(A + down * 0.004 + nrm * 0.006, B + down * 0.004 + nrm * 0.006, B + down * 0.008 + nrm * 0.006, A + down * 0.008 + nrm * 0.006, 0)
-        # black housing walls between the reflector and the body cut
-        for p, q in ((A, B), (B, C), (C, A)):
-            quad(p, q, q + nrm * (depth - 0.002), p + nrm * (depth - 0.002), 1)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    # the pocket walls/floor are part of the shell (RT.headlight_pockets); the light module faces forward from the
+    # rear wall, revealed when the cover's rear edge drops (MotorTrend: "bright jewel-like headlights")
+    RT.headlight_modules(bm, pockets, 0, 1, 2)
+    bm.normal_update()
+    for f in bm.faces:
+        if f.normal.x < 0 and f.calc_center_median().x > 1.5:
+            f.normal_flip()
     me = bpy.data.meshes.new("Front_Lights")
     bm.to_mesh(me)
     bm.free()
@@ -155,17 +146,9 @@ def apply_arches(body, M):
     sub.use_creases = True
     sub.boundary_smooth = 'PRESERVE_CORNERS'
     bpy.ops.object.modifier_apply(modifier=sub.name)
-    # headlight pockets: triangular recesses in the fender inner facets (calibrated front photo)
-    for side in (1, -1):
-        c = headlight_pocket_cutter(side, M)
-        b = body.modifiers.new("Pocket", 'BOOLEAN')
-        b.operation = 'DIFFERENCE'
-        b.solver = 'EXACT'
-        b.material_mode = 'TRANSFER'
-        b.object = c
-        bpy.context.view_layer.objects.active = body
-        bpy.ops.object.modifier_apply(modifier=b.name)
-        bpy.data.objects.remove(c, do_unlink=True)
+    # pop-down headlights: the triangular cover panels in the fender inner facets (calibrated front photo) are cut
+    # out as moving parts; the shell gets a wedge pocket, deepest under the cover's rear edge
+    covers, pockets = RT.headlight_pockets(body, M, HEADLIGHT_TRI)
     for c in arch_cutters():
         b = body.modifiers.new("Arch", 'BOOLEAN')
         b.operation = 'DIFFERENCE'
@@ -174,6 +157,7 @@ def apply_arches(body, M):
         bpy.context.view_layer.objects.active = body
         bpy.ops.object.modifier_apply(modifier=b.name)
         bpy.data.objects.remove(c, do_unlink=True)
+    return covers, pockets
 
 
 def extract_vent(body, M):
@@ -187,7 +171,7 @@ def extract_vent(body, M):
         vbm.faces.new([vmap.setdefault(v, vbm.verts.new(v.co)) for v in f.verts])
     inner = {v for f in vent_faces for v in f.verts if all(g.material_index == 5 for g in v.link_faces)}
     for v in inner:
-        v.co.z -= 0.045
+        v.co.z -= 0.075      # duct under the panel: its rear edge tilts down ~5 cm into it when the vent opens
     for f in vent_faces:
         f.material_index = 2
     bm.to_mesh(body.data)
@@ -239,6 +223,78 @@ def smooth(obj, angle=28):
     obj.select_set(True)
     bpy.ops.object.shade_smooth_by_angle(angle=math.radians(angle))
     obj.select_set(False)
+
+
+def coldgas_shell_openings(body):
+    """Open the body skin at the detailed hardware, using its authored positions.
+
+    These are reference-based packaging apertures, not manufacturer CAD. The
+    rear mouth follows the detailed frame; the floor opening feeds its ramp.
+    Nozzle cutters follow the same exits/axes exported for force and plume use.
+    """
+    cuts = []
+    outline = roadster_coldgas._box_outline()
+    bm = bmesh.new()
+    rear = [bm.verts.new((-2.24, y, z)) for y, z in outline]
+    front = [bm.verts.new((-1.92, y, z)) for y, z in outline]
+    bm.faces.new(rear)
+    bm.faces.new(list(reversed(front)))
+    for i in range(len(outline)):
+        j = (i + 1) % len(outline)
+        bm.faces.new((rear[i], front[i], front[j], rear[j]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new("FanMouthCut")
+    bm.to_mesh(mesh)
+    bm.free()
+    cut = bpy.data.objects.new("FanMouthCut", mesh)
+    bpy.context.collection.objects.link(cut)
+    cuts.append(cut)
+    # Duct ramp replaces this strip of the original closed underfloor. Keep the
+    # lower outer sills and all suspension/body mounts outside the opening.
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(-1.78, 0, 0.24))
+    intake = bpy.context.active_object
+    intake.name = "FanIntakeCut"
+    intake.scale = (0.74, 1.18, 0.38)
+    cuts.append(intake)
+    for name, d in roadster_coldgas.nozzle_manifest().items():
+        if name.startswith("Rear_"):
+            continue  # rear mouths are inside the already-open fan-box frame
+        direction = Vector(d["dir"])
+        centre = Vector(d["pos"]) - direction * 0.075
+        bpy.ops.mesh.primitive_cylinder_add(vertices=48, radius=d["exit_d"] * 0.5 + 0.004,
+                                          depth=0.23, location=centre)
+        c = bpy.context.active_object
+        c.name = "NozzleAperture_" + name
+        c.rotation_euler = direction.to_track_quat('Z', 'Y').to_euler()
+        cuts.append(c)
+    for c in cuts:
+        # The FBX material contract contains real material names only. Boolean
+        # cutters with no slot otherwise append a None slot to the body mesh.
+        c.data.materials.append(body.data.materials[0])
+        bpy.context.view_layer.objects.active = body
+        modifier = body.modifiers.new("ColdGasAperture", 'BOOLEAN')
+        modifier.operation = 'DIFFERENCE'
+        modifier.solver = 'EXACT'
+        modifier.material_mode = 'INDEX'
+        modifier.object = c
+        bpy.ops.object.modifier_apply(modifier=modifier.name)
+        cut_mesh = c.data
+        bpy.data.objects.remove(c, do_unlink=True)
+        if cut_mesh.users == 0:
+            bpy.data.meshes.remove(cut_mesh)
+
+
+def rear_fascia(M):
+    """Side fascia beside the detailed box, preserving the pawn's asset name.
+
+    The old P.rear_face also supplied a closed box, four shrouds and a nozzle
+    rail; those would overlap and obscure roadster_coldgas's detailed parts.
+    """
+    bm = bmesh.new()
+    for s in (-1, 1):
+        roadster_parts.box(bm, Vector((roadster_body.TAIL_X - 0.004, s * 0.728, 0.535)),
+                           (0.01, 0.164, 0.13), mat=1)
+    return roadster_parts.new_obj("Rear_Diffuser", bm, [M["Carbon"], M["BlackGloss"]])
 
 
 def simple_wheel(name, x, y, r, width, M):
@@ -305,31 +361,36 @@ def main():
     sc = reset_scene()
     M = materials()
     body = build_body(M)
-    apply_arches(body, M)
+    covers, pockets = apply_arches(body, M)
     vent = extract_vent(body, M)
-    smooth(body, 24)
+    coldgas_shell_openings(body)
     P = roadster_parts
     static = [body]
-    static.append(front_lights(M))
+    static.append(front_lights(M, pockets))
     static.append(P.tail_lights(M))
-    static.append(conform(P.side_details(M), body, 0.0012))
+    side_details = conform(P.side_details(M), body, 0.0012)
+    static.append(side_details)
     static.append(P.splitter(M))
     pl, pt = P.plate(M)
     static += [pl, pt]
-    static.append(P.rear_face(M))
-    rear_thr, rocket_thr = P.thrusters(M)
-    copv = P.copv(M)
+    static.append(rear_fascia(M))
+    coldgas = roadster_coldgas.build(M)
+    fan_data = roadster_coldgas.fan_manifest()
+    fans = [coldgas[n] for n in fan_data]
+    coldgas_static = [o for n, o in coldgas.items() if n not in fan_data]
     # The detailed modules preserve the names loaded by RoadsterPawn. The legacy
     # P.interior includes wheel-well boxes above the front fenders and is no
     # longer used. All cabin, yoke and display geometry now comes from one source.
     interior = roadster_interior.build(M)
-    wing = P.rear_wing(M)
-    barges = P.barge_boards(M)
-    skirt = P.skirts(M)
-    fans = []
-    for k in range(4):
-        y = (k - 1.5) * 1.26 / 4
-        fans.append(P.fan_rotor(M, "Fan_%d" % k, (roadster_body.TAIL_X - 0.05 + 0.10, y, 0.284)))
+    # the transforming body: doors (+ removable roof glass), tail wing + struts, barge boards, front wings, skirts.
+    # Cut from the finished shell, so it must run after every other shell operation and before shading.
+    tparts, tstatics, _ = RT.build(body, interior["Interior"], side_details, M)
+    tparts.update(covers)
+    smooth(body, 24)
+    static += tstatics
+    # hood vent: hinge on its front edge, the rear edge tilts down into the duct (MotorTrend: "tilts down")
+    RT.hinge("Hood_Vent", list(vent.location), (0, 1, 0),
+             {"open": RT.open_sign(vent.location, (0, 1, 0), vent.location - Vector((0.30, 0, 0)), (0, 0, -1)) * 9.0})
     # wheels, brakes and the pushrod suspension (all four corners) + export/suspension_rig.json
     wobj = roadster_wheels.build(M, write_rig=not CANDIDATE,
                                  rig_path=os.path.join(OUT, "suspension_rig.json") if CANDIDATE else roadster_wheels.RIG_JSON)
@@ -361,21 +422,35 @@ def main():
     # export manifest: every exported mesh with its pivot (Blender coordinates, metres)
     global EXPORT_SET
     EXPORT_SET = {
-        "static": [o.name for o in static] + [rear_thr.name, rocket_thr.name, copv.name] + [o.name for o in interior.values() if o.name not in ("Yoke",)]
+        "static": [o.name for o in static] + [o.name for o in coldgas_static] + [o.name for o in interior.values() if o.name not in ("Yoke",)]
                   + [o.name for o in susp_static],
-        "moving": {o.name: list(o.location) for o in [wing, vent, skirt, interior["Yoke"]] + barges + fans + susp_moving},
+        "moving": {o.name: list(o.location) for o in [vent, interior["Yoke"]] + list(tparts.values()) + fans + susp_moving},
+        "hinges": RT.HINGES,
+        "wing": RT.WING,
+        "skirts": RT.SKIRTS,
         "wheels": {o.name: [0, 0, 0] for o in (wf, wr, dfront, cfront, drear, crear)},
         "hardpoints": {k: [v[0], v[1], v[2]] for k, v in corners.items()},
-        "geometry_sources": {"interior": "roadster_interior.build", "wheels": "roadster_wheels.build (wheels, brakes, Susp_* rig)"},
+        "nozzles": roadster_coldgas.nozzle_manifest(),
+        "fans": fan_data,
+        "geometry_sources": {"interior": "roadster_interior.build", "wheels": "roadster_wheels.build (wheels, brakes, Susp_* rig)",
+                             "coldgas": "roadster_coldgas.build (all returned meshes; no legacy fan box, rotor, vessel or nozzles)"},
         "export_contract": {
             "static": "car-space evaluated geometry with identity object transform; UE component transform stays identity",
             "moving": "pivot-local evaluated geometry; translation removed; existing rest rotations baked except Yoke",
             "Yoke": "unrotated local geometry; UE applies base pitch -24deg then local X steering at manifest pivot",
             "wheels": "wheel-centred LEFT-side templates; right side uses runtime 180deg flip; discs/calipers already contain inboard offset",
             "screen_uvs": "preserved authored 0..1 UVs; normals face driver; no smart projection on screens",
+            "nozzles": "car-space exit points in metres; dir is unit exhaust/plume direction; force on car is -dir; Blender +Y is LEFT",
+            "fans": "35deg rest pitch baked into pivot-local mesh; animate about fans[name].axis in car frame; no additional rest pitch",
+            "shell_openings": "reference-based fan mouth, underfloor intake and lift/yaw apertures; not manufacturer CAD",
+            "transforming_body": "Door_*/DoorGlass_*/HeadlightCover_*/Barge_*/FrontWing_*/Hood_Vent rotate about hinges[name] "
+                                 "(pivot = mesh origin, unit axis, signed degrees per state, Blender right-hand rule). "
+                                 "Rear_Wing: origin on the pitch axis; translate by wing.lift * path(s) then pitch about +Y. "
+                                 "Wing_Struts follow the translation only. Skirt_*: translate along skirts.axis.",
         },
     }
     validate_cabin_contract(interior)
+    validate_coldgas_contract(coldgas)
 
     if DO_VIEWS:
         setup_render(sc, 3440, 1024)
@@ -454,15 +529,14 @@ def export_fbx():
             ob.hide_viewport = hidden
     with open(os.path.join(exp, "manifest.json"), "w") as f:
         json.dump(EXPORT_SET, f, indent=1)
-    if not CANDIDATE:
-        write_rig_header(EXPORT_SET)
+    write_rig_header(EXPORT_SET, os.path.join(exp, "RoadsterRig.h") if CANDIDATE else RIG_HEADER)
     print("EXPORTED", len(names))
 
 
 RIG_HEADER = os.path.join(SCRIPT_DIR, "..", "..", "Unreal", "RoadsterSim", "Source", "RoadsterSim", "Public", "RoadsterRig.h")
 
 
-def write_rig_header(es):
+def write_rig_header(es, path=None):
     """Generated C++ constants (Blender frame, metres) so the game always matches the exported model."""
     lines = ["// GENERATED by Blender/scripts/build_roadster.py (export_fbx) - do not edit by hand.",
              "// Blender frame: metres, +X forward, +Y = car's LEFT, +Z up. Convert with B2U() in the pawn.",
@@ -475,22 +549,108 @@ def write_rig_header(es):
     lines.append("\t};")
     lines.append("\tstatic const int NumPivots = %d;" % len(piv))
     nz = es.get("nozzles", {})
-    lines.append("\tstruct FNozzle { const char* Name; double X, Y, Z, DX, DY, DZ, ExitDiameter; };")
+    lines.append("\t// D is exhaust/plume direction. Vehicle force is -D. All points are nozzle EXIT centres.")
+    lines.append("\tstruct FNozzle { const char* Name; double X, Y, Z, DX, DY, DZ, ExitDiameter, ThroatDiameter, FeedLineDiameter; };")
     lines.append("\tstatic const FNozzle Nozzles[] = {")
     for n, d in nz.items():
-        lines.append('\t\t{ "%s", %.5f, %.5f, %.5f, %.4f, %.4f, %.4f, %.4f },' % (n, *d["pos"], *d["dir"], d.get("exit_d", 0.07)))
+        lines.append('\t\t{ "%s", %.6f, %.6f, %.6f, %.6f, %.6f, %.6f, %.6f, %.6f, %.6f },' %
+                     (n, *d["pos"], *d["dir"], d["exit_d"], d["throat_d"], d["feed_line_d"]))
     if not nz:
-        lines.append('\t\t{ "none", 0, 0, 0, 0, 0, 0, 0 },')
+        lines.append('\t\t{ "none", 0, 0, 0, 0, 0, 0, 0, 0, 0 },')
     lines.append("\t};")
     lines.append("\tstatic const int NumNozzles = %d;" % len(nz))
+    fans = es.get("fans", {})
+    lines.append("\t// Rest pitch is BAKED in each exported fan. Rotate around A (car frame); E is airflow exhaust.")
+    lines.append("\tstruct FFan { const char* Name; double X, Y, Z, AX, AY, AZ, EX, EY, EZ, PitchDegrees, TipDiameter; int Blades; };")
+    lines.append("\tstatic const FFan Fans[] = {")
+    for n, d in fans.items():
+        lines.append('\t\t{ "%s", %.6f, %.6f, %.6f, %.6f, %.6f, %.6f, %.6f, %.6f, %.6f, %.4f, %.6f, %d },' %
+                     (n, *d["pivot"], *d["axis"], *d["exhaust"], d["pitch_deg"], d["tip_d"], d["blades"]))
+    if not fans:
+        lines.append('\t\t{ "none", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },')
+    lines.append("\t};")
+    lines.append("\tstatic const int NumFans = %d;" % len(fans))
+    # transforming body: hinge axes (Blender frame; positive angle = right-hand rule about A)
+    hinges = {k: v for k, v in es.get("hinges", {}).items() if v}
+    lines.append("\t// Moving body panels. Mesh origin = P (a point on the hinge axis). Angles are signed degrees about A")
+    lines.append("\t// (Blender right-hand rule): Open = fully open / deployed; Mid = front wings' High Downforce; Max = travel limit.")
+    lines.append("\tstruct FHinge { const char* Name; double PX, PY, PZ, AX, AY, AZ, Open, Mid, Max; };")
+    lines.append("\tstatic const FHinge Hinges[] = {")
+    for n, h in hinges.items():
+        t = h["travel"]
+        opn = t.get("open", t.get("high_downforce", 0.0))
+        mid = t.get("high_downforce", opn)
+        mx = t.get("max", opn)
+        lines.append('\t\t{ "%s", %.6f, %.6f, %.6f, %.6f, %.6f, %.6f, %.4f, %.4f, %.4f },' % (n, *h["pivot"], *h["axis"], opn, mid, mx))
+    if not hinges:
+        lines.append('\t\t{ "none", 0, 0, 0, 0, 1, 0, 0, 0, 0 },')
+    lines.append("\t};")
+    lines.append("\tstatic const int NumHinges = %d;" % len(hinges))
+    w = es.get("wing", {})
+    if w:
+        lines.append("\t// Rear wing: stowed = mesh at the pivot; deployed = pivot + Lift * path(s); pitch about +Y (trailing edge up).")
+        lines.append("\tstatic const double WingPivot[3] = { %.6f, %.6f, %.6f };" % tuple(w["pivot"]))
+        lines.append("\tstatic const double WingLift[3] = { %.6f, %.6f, %.6f };" % tuple(w["lift"]))
+        p = w["pitch_deg"]
+        lines.append("\tstatic const double WingPitchLowDrag = %.3f, WingPitchHighDownforce = %.3f, WingPitchAirbrake = %.3f;"
+                     % (p["low_drag"], p["high_downforce"], p["airbrake"]))
+        t = w["times"]
+        lines.append("\tstatic const double WingDeploySeconds = %.3f, WingPitchSeconds = %.3f, WingAirbrakeSeconds = %.3f;"
+                     % (t["deploy_s"], t["pitch_s"], t["airbrake_s"]))
+    sk = es.get("skirts", {})
+    if sk:
+        lines.append("\tstatic const double SkirtHeight = %.4f, SkirtReach = %.4f;   // metres; skirts drop along -Z" % (sk["height"], sk["reach"]))
+    lines.append("\tinline const FHinge* FindHinge(const char* Name)")
+    lines.append("\t{")
+    lines.append("\t\tfor (const FHinge& P : Hinges) { const char* a = P.Name; const char* b = Name; while (*a && *a == *b) { ++a; ++b; } if (*a == *b) return &P; }")
+    lines.append("\t\treturn nullptr;")
+    lines.append("\t}")
     lines.append("\tinline const FPivot* FindPivot(const char* Name)")
     lines.append("\t{")
     lines.append("\t\tfor (const FPivot& P : Pivots) { const char* a = P.Name; const char* b = Name; while (*a && *a == *b) { ++a; ++b; } if (*a == *b) return &P; }")
     lines.append("\t\treturn nullptr;")
     lines.append("\t}")
+    for typename, array, label in (("FNozzle", "Nozzles", "Nozzle"), ("FFan", "Fans", "Fan")):
+        lines.append("\tinline const %s* Find%s(const char* Name)" % (typename, label))
+        lines.append("\t{")
+        lines.append("\t\tfor (const %s& P : %s) { const char* a = P.Name; const char* b = Name; while (*a && *a == *b) { ++a; ++b; } if (*a == *b) return &P; }" % (typename, array))
+        lines.append("\t\treturn nullptr;")
+        lines.append("\t}")
     lines.append("}")
-    with open(RIG_HEADER, "w", newline="\n") as f:
+    with open(path or RIG_HEADER, "w", newline="\n") as f:
         f.write("\n".join(lines) + "\n")
+
+
+def validate_coldgas_contract(parts):
+    """Validate the complete hardware and metadata handoff before writing assets."""
+    expected = {"Fan_Box", "Thrusters_Rear", "Thrusters_Rocket", "COPV_Rocket", "COPV_Trunk", "ColdGas_Plumbing"}
+    expected.update("Fan_%d" % i for i in range(4))
+    if set(parts) != expected:
+        raise RuntimeError("Detailed cold-gas part contract differs: " + str(set(parts) ^ expected))
+    names = EXPORT_SET["static"] + list(EXPORT_SET["moving"]) + list(EXPORT_SET["wheels"])
+    if len(names) != len(set(names)) or not expected.issubset(names):
+        raise RuntimeError("Cold-gas export contains duplicate or missing parts")
+    bpy.context.view_layer.update()
+    for name, d in EXPORT_SET["fans"].items():
+        ob = parts[name]
+        axis = (ob.matrix_world.to_3x3() @ Vector((1, 0, 0))).normalized()
+        if (Vector(d["pivot"]) - ob.location).length > 1e-5 or (Vector(d["axis"]) - axis).length > 1e-4:
+            raise RuntimeError("Fan metadata differs from authored pose: " + name)
+        # Preserve the full authored vector, avoiding accumulated spin drift from
+        # the detailed module's five-decimal display-oriented manifest values.
+        d["axis"] = list(axis)
+        d["exhaust"] = list(-axis)
+    if len(EXPORT_SET["nozzles"]) != 10:
+        raise RuntimeError("Expected four rear, four lift and two yaw exits")
+    for name, d in EXPORT_SET["nozzles"].items():
+        if abs(Vector(d["dir"]).length - 1) > 1e-6 or not 0 < d["throat_d"] < d["exit_d"]:
+            raise RuntimeError("Invalid nozzle metadata: " + name)
+        # Match the actual yaw lathe origin without the source API's 0.1 mm
+        # presentation rounding. The aperture and force/plume centre then agree.
+        if name.startswith("Yaw_"):
+            d["pos"][1] = math.copysign(roadster_coldgas.yaw_exit_y()[0] - 0.002, d["pos"][1])
+    EXPORT_SET["coldgas_contract"] = {"parts": sorted(expected), "nozzle_count": 10, "fan_count": 4,
+                                       "legacy_coldgas_geometry": False, "fan_rest_pitch_baked": True}
 
 
 def validate_cabin_contract(parts):

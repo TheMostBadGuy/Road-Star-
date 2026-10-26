@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "vQ9v85ZiEZ4=",
+  "success": true,
+  "projectFilePath": "E:\\TeslaRoadsterSim\\TeslaRoadsterMod\\TeslaRoadsterMod.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Will\\.nuget\\packages\\microsoft.netframework.referenceassemblies\\1.0.3\\microsoft.netframework.referenceassemblies.1.0.3.nupkg.sha512",
+    "C:\\Users\\Will\\.nuget\\packages\\microsoft.netframework.referenceassemblies.net35\\1.0.3\\microsoft.netframework.referenceassemblies.net35.1.0.3.nupkg.sha512"
+  ],
+  "logs": []
+}

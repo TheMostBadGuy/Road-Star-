@@ -1,0 +1,9 @@
+E:\TeslaRoadsterSim\TeslaRoadsterMod\bin\Release\net35\TeslaRoadsterMod.dll
+E:\TeslaRoadsterSim\TeslaRoadsterMod\bin\Release\net35\TeslaRoadsterMod.pdb
+E:\TeslaRoadsterSim\TeslaRoadsterMod\obj\Release\net35\TeslaRoadsterMod.csproj.AssemblyReference.cache
+E:\TeslaRoadsterSim\TeslaRoadsterMod\obj\Release\net35\TeslaRoadsterMod.GeneratedMSBuildEditorConfig.editorconfig
+E:\TeslaRoadsterSim\TeslaRoadsterMod\obj\Release\net35\TeslaRoadsterMod.AssemblyInfoInputs.cache
+E:\TeslaRoadsterSim\TeslaRoadsterMod\obj\Release\net35\TeslaRoadsterMod.AssemblyInfo.cs
+E:\TeslaRoadsterSim\TeslaRoadsterMod\obj\Release\net35\TeslaRoadsterMod.csproj.CoreCompileInputs.cache
+E:\TeslaRoadsterSim\TeslaRoadsterMod\obj\Release\net35\TeslaRoadsterMod.dll
+E:\TeslaRoadsterSim\TeslaRoadsterMod\obj\Release\net35\TeslaRoadsterMod.pdb

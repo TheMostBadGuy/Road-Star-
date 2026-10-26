@@ -1,0 +1,63 @@
+PlanetEnvironmentChecks.cpp
+PASS | 0m geometric temperature reference | 288.15
+PASS | 0m geometric pressure reference | 101325
+PASS | 0m geometric density reference | 1.22499915588771
+PASS | 11000m geometric temperature reference | 216.773512704456
+PASS | 11000m geometric pressure reference | 22699.9607392334
+PASS | 11000m geometric density reference | 0.36480156418656
+PASS | 20000m geometric temperature reference | 216.65
+PASS | 20000m geometric pressure reference | 5529.31189229915
+PASS | 20000m geometric density reference | 0.0889099150888865
+PASS | 50000m geometric temperature reference | 270.65
+PASS | 50000m geometric pressure reference | 79.7790929964912
+PASS | 50000m geometric density reference | 0.00102687803426163
+PASS | 86000m geometric temperature reference | 186.867166693608
+PASS | 86000m geometric pressure reference | 0.373380461831058
+PASS | 86000m geometric density reference | 6.95782378133247e-06
+PASS | 100000m upper table temperature reference | 195.081344335247
+PASS | 100000m upper table pressure knot | 0.032011
+PASS | 100000m upper table density knot | 5.60400000000001e-07
+PASS | 120000m upper table temperature reference | 360
+PASS | 120000m upper table pressure knot | 0.0025382
+PASS | 120000m upper table density knot | 2.222e-08
+PASS | 200000m upper table temperature reference | 854.559090798055
+PASS | 200000m upper table pressure knot | 8.4736e-05
+PASS | 200000m upper table density knot | 2.541e-10
+PASS | 400000m upper table temperature reference | 995.825361036597
+PASS | 400000m upper table pressure knot | 1.4518e-06
+PASS | 400000m upper table density knot | 2.803e-12
+PASS | 1000000m upper table temperature reference | 999.999685598112
+PASS | 1000000m upper table pressure knot | 7.5138e-09
+PASS | 1000000m upper table density knot | 3.561e-15
+PASS | held-out upper interpolation within documented 6 percent spot-check tolerance | 0.0289908985461427
+PASS | held-out upper interpolation within documented 6 percent spot-check tolerance | 0.00807072684851051
+PASS | pressure and density decrease every kilometre through extrapolated 1500km | 0
+PASS | atmosphere values positive and finite through1500km | 0
+PASS | hydrostatic layers and86km join continuous without pressure-density jumps | 0
+PASS | surface gravity uses requested mu and mean radius | 9.82025048706393
+PASS | radial gravity decreases exactly with inverse square | 8.69425048282374
+PASS | radial altitude works away from launchsite Z axis | 400000
+PASS | rotated equal-radius atmosphere unchanged | 0
+PASS | gravity points toward translated Earth centre | -8.69425048282374
+PASS | central singularity explicitly guarded | 0
+PASS | central orbit state invalid | 0
+PASS | 400km circular speed7672.6mps | 7672.59864838501
+PASS | circular orbit bound and misses Earth | 0
+PASS | circular eccentricity near zero | 0
+PASS | circular periapsis at400km | 399999.999999999
+PASS | circular apoapsis at400km | 400000
+PASS | escape speed is sqrt2 times circular speed | 10850.6930671916
+PASS | 400x1400km ellipse bound and nonimpacting | 0
+PASS | elliptic periapsis400km | 400000
+PASS | elliptic apoapsis1400km | 1400000
+PASS | super-escape hyperbola unbound positiveenergy | 0
+PASS | unbound apoapsis is infinity | 0
+PASS | exact local escape speed gives parabolic nonbound trajectory | 0
+PASS | suborbital400km trajectory intersects Earth | -6312998.09249216
+PASS | radial degenerate bound orbit impacting and finite | 0
+PASS | RK4coast one orbit max relative energy drift below2e-10 | 5.61772850460329e-14
+PASS | RK4coast one orbit max relative angular-momentum drift below1e-10 | 2.80886425230165e-14
+PASS | RK4coast one orbit position closure below1cm | 8.81747408628989e-05
+PASS | RK4coast one orbit velocity closure below1e-5mps | 9.99145275478466e-08
+PASS | RK4 step refinement demonstrates fourth-order convergence | 17.9633120746902
+RESULT 61/61 checks passed

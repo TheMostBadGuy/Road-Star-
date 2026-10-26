@@ -46,6 +46,7 @@ public:
 	bool bSimPaused = false;
 
 	void SetTrim(Roadster::Trim NewTrim);
+	void StartRoadstarScenario(int32 Scenario);
 	/** Put the car on the nearest track sample (or upright where it is) and stop it. */
 	void ResetToTrack(bool bToStart = false);
 	void PlaceAt(const FTransform& BodyOriginWorld, float SpeedMps = 0.f);
@@ -64,6 +65,7 @@ public:
 	// ------------------------------------------------------------ engineering X-ray view
 	/** Body and trim become an edge-lit translucent ghost so the cold-gas system, fans and chassis show. */
 	bool bXRay = false;
+	float SpeedFeelIntensity = 1.f;
 	void SetXRay(bool bOn);
 
 	// ------------------------------------------------------------ car state toggles (UI)
@@ -90,6 +92,9 @@ protected:
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> ThrustersRear;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> ThrustersRocket;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> COPV;
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> COPVTrunk;
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> ColdGasPlumbing;
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> FanBox;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> SeatPassenger;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Wing;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> HoodVent;
@@ -117,6 +122,7 @@ protected:
 	UPROPERTY() TArray<TObjectPtr<USpotLightComponent>> Headlights;
 	UPROPERTY() TObjectPtr<UPointLightComponent> BrakeGlow;
 	UPROPERTY() TObjectPtr<UPointLightComponent> CabinGlow;
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> EarthVisual;
 	UPROPERTY() TObjectPtr<UAudioComponent> AudioMotor;
 	UPROPERTY() TObjectPtr<UAudioComponent> AudioFan;
 	UPROPERTY() TObjectPtr<UAudioComponent> AudioThrust;
@@ -129,6 +135,13 @@ protected:
 	/** Original materials of the components the X-ray view ghosts (restored when it is switched off). */
 	UPROPERTY() TMap<TObjectPtr<UStaticMeshComponent>, FXRaySaved> XRaySaved;
 
+	// [TEAM HOOKUP: components] overlay / VFX component pointers (Coordination/TEAM.md). Add UPROPERTY lines here.
+
+	friend class URoadsterThermalOverlay;
+	friend class URoadsterFlowOverlay;
+	friend class URoadsterPhysicsLab;
+	friend class URoadsterJetVFX;
+
 private:
 	double Accumulator = 0.0;
 	double DebugAfterReset = -1.0;
@@ -137,6 +150,7 @@ private:
 	FVector CamUp = FVector::UpVector;
 	FRotator CamRot = FRotator::ZeroRotator;
 	float CamFov = 75.f;
+	float CameraAccelG = 0.f;
 	float OrbitYaw = 200.f, OrbitPitch = -12.f;
 	float CaptureTimer = 0.f, ScreenTimer = 0.f;
 	float CinematicTimer = 0.f;

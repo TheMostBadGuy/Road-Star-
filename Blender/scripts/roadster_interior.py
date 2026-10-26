@@ -200,10 +200,9 @@ def roof_z(x, y):
 def inside_body(p):
     """Signed clearance (m) of point p inside the body section at p.x (negative = outside the skin)."""
     pts = body_half_section(p.x)
-    poly = pts + [(0.0, pts[-1][1])][:0]
     y, z = abs(p.y), p.z
-    # winding test on the half section closed along the centreline (y = 0)
-    ring = poly + [(0.0, pts[0][1])]
+    # crossing test on the half section, closed along the centreline (y = 0)
+    ring = pts + [(0.0, pts[0][1])]
     inside = False
     for (y0, z0), (y1, z1) in zip(ring, ring[1:] + ring[:1]):
         if (z0 > z) != (z1 > z):
@@ -653,7 +652,7 @@ def build_seat(X, rng_seed=5):
     rng = random.Random(rng_seed)
 
     # ---------------- cushion: sweep of the cross-section along the centreline (rear -> front -> down the nose)
-    C = resample(spline([V((x, 0, z)) for x, z in CUSH_C], 6), 46)
+    C = resample(spline([V((x, 0, z)) for x, z in CUSH_C], 6), 62)
     L = cumlen(C)
     S = [l / L[-1] for l in L]
     rows = []
@@ -698,7 +697,7 @@ def build_seat(X, rng_seed=5):
             rowk += 1
 
     # ---------------- back: closed-loop sweep (front profile + rear shell), rounded top cap
-    B = resample(spline([V((x, 0, z)) for x, z in BACK_C], 6), 44)
+    B = resample(spline([V((x, 0, z)) for x, z in BACK_C], 6), 60)
     LB = cumlen(B)
     SB = [l / LB[-1] for l in LB]
     Wf = lambda s: table([0, 0.12, 0.36, 0.62, 0.74, 0.83, 0.91, 1.0], [0.250, 0.250, 0.240, 0.262, 0.262, 0.212, 0.165, 0.150], s)
@@ -894,9 +893,10 @@ def mirror_mb(src_obj, name):
 
 
 # ============================================================================= YOKE (local frame: +X column axis)
-def yoke_outline(a, b, n, K, cz=0.0):
-    pts = [V((a * math.copysign(abs(math.cos(t)) ** (2 / n), math.cos(t)), b * math.copysign(abs(math.sin(t)) ** (2 / n), math.sin(t)) + cz))
-           for t in [2 * math.pi * k / 2048 for k in range(2048)]]
+def yoke_outline(a, b, n, samples=2048):
+    """Dense superellipse |y/a|^n + |z/b|^n = 1 (squircle rim outline)."""
+    pts = [V((a * math.copysign(abs(math.cos(t)) ** (2 / n), math.cos(t)), b * math.copysign(abs(math.sin(t)) ** (2 / n), math.sin(t))))
+           for t in [2 * math.pi * k / samples for k in range(samples)]]
     return pts
 
 
@@ -907,11 +907,11 @@ def build_yoke(X):
     spoke in Sawyer Merritt's frame cabin_touchscreen_bezel_boost_button)."""
     mb = MB()
     xr = -YOKE_SETBACK                         # rim section centre plane (local x)
-    K = 132
+    K = 176
     A, Bh = 0.165, 0.086                       # outer half width / half height (0.33 x 0.172 m, Slide-4 aspect)
     Ai, Bi = 0.119, 0.0655                     # inner opening: 46 mm grips, ~20 mm top / bottom bars
     NO, NI = 4.6, 4.0                          # superellipse exponents (rounded-rectangle squircle)
-    outer_d = yoke_outline(A, Bh, NO, 2048)
+    outer_d = yoke_outline(A, Bh, NO)
     acc = cumlen(outer_d, closed=True)
     th = []
     j = 0
@@ -1232,9 +1232,12 @@ def build_interior(X):
     f += mb.cap(Gs[0], K['D']); mb.groups.pop()
     mb.group(f, 'closed')
 
-    # ---------------- door / quarter inner panels (both sides)
+    # ---------------- door / quarter inner panels (both sides) + kick panels closing the space ahead of the doors
     for s in (1, -1):
         door_panel(mb, K, s)
+        P = [[V((0.995, s * y, z)) for y in (0.600, 0.660, 0.720, 0.780, 0.840, 0.875)] for z in (FLOOR - 0.004, 0.30, 0.45, 0.60, 0.72, 0.80)]
+        P = [[fit_inside(p, 0.006) for p in row] for row in P]
+        mb.grid(P, K['C'], uvs=carbon_uv, orient=('dir', V((-1, 0, 0))))
 
     # ---------------- headliner, windshield frame (A-pillars + header), braces, rear-view display
     headliner(mb, K)
@@ -1361,7 +1364,7 @@ def door_section(x, s):
 
 
 def door_panel(mb, K, s):
-    xs = [round(1.00 - 0.02 * k, 3) for k in range(int((1.00 - (X_BULK - 0.10)) / 0.02) + 1)]
+    xs = [round(1.00 - 0.015 * k, 4) for k in range(int((1.00 - (X_BULK - 0.24)) / 0.015) + 1)]
     rows, mats = [], None
     for x in xs:
         sec = door_section(x, s)
@@ -1410,7 +1413,7 @@ def roof_section(x, inset, n=10):
 def headliner(mb, K):
     """Gray microsuede headliner under the glass roof: raised centre spine, side panels, rolled edges at the
     roof rails (side-glass top). Front edge meets the windshield header."""
-    xs = [X_HEADER + 0.02 - 0.025 * k for k in range(int((X_HEADER + 0.02 - (X_BULK - 0.20)) / 0.025) + 1)]
+    xs = [X_HEADER + 0.02 - 0.020 * k for k in range(int((X_HEADER + 0.02 - (X_BULK - 0.26)) / 0.020) + 1)]
     rows = []
     for x in xs:
         sec = roof_section(x, 0.030, 12)
@@ -1436,17 +1439,17 @@ def frame_path():
     # sweeps up and inboard across the front of the side glass into the header corner, a "U" around the view.
     # Pillar centre line: z rises from the dash corner to the header corner; y follows the side glass 4.5 cm inboard.
     left = []
-    for (x, z) in ((0.935, 0.786), (0.880, 0.845), (0.800, 0.905), (0.700, 0.958), (0.590, 0.998), (0.490, 1.024)):
+    for (x, z) in ((0.935, 0.786), (0.880, 0.845), (0.800, 0.905), (0.715, 0.955), (0.630, 0.990), (X_HEADER + 0.225, 1.018)):
         left.append(V((x, skin_y(x, z) - 0.052, z)))
     # large-radius top corner into the header (Slide-4: the frame reads as one padded "U")
     zh = lambda y: roof_z(X_HEADER, y) - 0.050
-    for (x, y) in ((0.410, 0.520), (0.345, 0.490), (0.300, 0.450), (0.275, 0.400)):
+    for (x, y) in ((X_HEADER + 0.150, 0.520), (X_HEADER + 0.085, 0.490), (X_HEADER + 0.040, 0.450), (X_HEADER + 0.012, 0.400)):
         z = min(zh(y) + 0.004, roof_z(x, y) - 0.050)
         left.append(V((x, min(y, skin_y(x, z) - 0.052), z)))
     head = [V((X_HEADER, y, zh(y))) for y in (0.33, 0.22, 0.11, 0.0)]
     right = [V((p.x, -p.y, p.z)) for p in reversed(left + head[:-1])]
     pts = left + head + right
-    return resample(spline(pts, 8), 190)
+    return resample(spline(pts, 8), 240)
 
 
 def frame_and_braces(mb, K):
@@ -1480,7 +1483,7 @@ def rear_view(mb, K):
         mid = (a + b) / 2
         d = b - a
         rot = d.to_track_quat('Z', 'X').to_matrix()
-        mb.box(mid, (0.010, 0.009, d.length + 0.008), K['A'] if k != 1 else K['A'], r=0.003, rot=rot)
+        mb.box(mid, (0.010, 0.009, d.length + 0.008), K['A'], r=0.003, rot=rot)
     # dark infill of the triangle
     f = mb.face([mb.vert(p + V((0.003, 0, 0))) for p in tri], K['B'], [(0.5, 1), (0, 0), (1, 0)])
     f2 = mb.face([mb.vert(p + V((0.006, 0, 0))) for p in reversed(tri)], K['B'], [(0.5, 1), (1, 0), (0, 0)])

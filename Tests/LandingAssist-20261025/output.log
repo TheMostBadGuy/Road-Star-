@@ -1,0 +1,68 @@
+PASS | rest-to-rest minimum is 2 sqrt angle over acceleration | 0.708981540362
+PASS | opposing spin requires additional recovery time | 0.849009481814
+PASS | asymmetric acceleration formula | 1.11803398875
+PASS | zero authority cannot invent a rotation plan | 0
+PASS | already settled needs zero authority | 0
+PASS | angular impulse accounts for accelerate plus brake | 9216.76002471
+PASS | ballistic plane contact matches analytic one second | 0.999999999981
+PASS | reported impact normal speed matches ballistic speed | 9.99999999981
+PASS | safe upright airborne landing needs no intervention | 0
+PASS | free yaw does not masquerade as tilt recovery | 0
+PASS | no-hit flight never auto-levels | 0
+PASS | trace horizon has bounded finite sphere queries | 50
+PASS | no-hit telemetry stays finite | 0
+PASS | orbital no-hit flight has no invented landing normal correction | 0
+PASS | exact inversion produces a real rotation request | 12000
+PASS | extremely late inverted landing is not guaranteed recoverable | 1.02241422926
+PASS | late recovery still respects actual torque limits | 0
+PASS | antipodal perturbation does not reverse recovery branch | 0
+PASS | recoverable imminent inversion triggers before physical deadline | 1.02241422926
+PASS | manual stunt remains free with sufficient recovery time | 0.863865347977
+PASS | completed stunt before the floor needs no recovery | 0
+PASS | four-wheel inverted ceiling driving is never auto-levelled | 0
+PASS | sealed inverted fan attachment also suppresses recovery | 0
+PASS | ascending ceiling contact predicted on the actual surface | 0.215114219803
+PASS | airborne ceiling landing targets wheels toward ceiling | 0
+PASS | already ceiling-aligned airborne vehicle requests no world-up torque | 0
+PASS | wall landing uses collision normal rather than gravity up | -18000
+PASS | empty gas reports nonrecoverable inversion | 0
+PASS | empty gas cannot produce torque | 0
+PASS | one-tick angular impulse cannot exceed remaining gas budget | 1
+PASS | slower burn can fit a finite angular impulse budget | 1.71139134379
+PASS | gas-limited tight deadline includes sampled feedback reserve | 1.71139134379
+PASS | zero nozzle authority is finite and nonrecoverable | 0
+PASS | combined pitch-roll respects shared allocation envelope | 1
+PASS | landing supervisor never requests yaw torque | 0
+PASS | deadline fixture latches recovery | 0.737377439199
+PASS | deadline timing jitter does not chatter intervention | 0
+PASS | recovery releases after sustained extra flight time | 0
+PASS | missing contact never applies a stale torque | 0
+PASS | missing contact eventually clears recovery latch | 0
+PASS | invalid sensor values rejected with finite zero command | 0
+PASS | invalid sensor values rejected with finite zero command | 0
+PASS | invalid sensor values rejected with finite zero command | 0
+PASS | invalid sensor values rejected with finite zero command | 0
+PASS | invalid sensor values rejected with finite zero command | 0
+PASS | nonfinite vehicle state rejected | 0
+PASS | invalid body basis rejected | 0
+PASS | missing trace callback rejected | 0
+PASS | invalid update interval rejected | 0
+PASS | stalled update cannot overbook held-command gas impulse | 0
+PASS | disabled feature does not query unavailable sensors | 0
+CLOSED LOOP floor inversion: alignment 1.92700071 degrees, final roll rate 0.01307638 rad/s, angular impulse 10906.50646067 Nms
+PASS | physical closed loop recovers inverted vehicle before contact | 0.999434480542
+PASS | closed-loop impulse remains within actual supplied budget | 10906.5064607
+PASS | physical ceiling recovery aligns wheels upward without world-level bias | -0.999434480542
+ECONOMY t=0.00 angle=3.142 rate=0.000 scale=0.32768 remaining=7000.000 need=6843.148 recover=1
+ECONOMY t=0.20 angle=3.293 rate=1.512 scale=0.32768 remaining=6213.568 need=5781.465 recover=1
+ECONOMY t=0.40 angle=3.747 rate=3.025 scale=0.32768 remaining=5427.136 need=4719.782 recover=1
+ECONOMY t=0.60 angle=4.503 rate=4.537 scale=0.32768 remaining=4640.704 need=3658.099 recover=1
+ECONOMY t=0.80 angle=5.401 rate=3.856 scale=0.32768 remaining=3939.503 need=3933.340 recover=0
+ECONOMY t=1.00 angle=6.021 rate=2.344 scale=0.32768 remaining=3153.071 need=2871.657 recover=1
+ECONOMY t=1.20 angle=6.338 rate=0.832 scale=0.32768 remaining=2366.639 need=1809.974 recover=1
+ECONOMY t=1.40 angle=6.353 rate=-0.681 scale=0.32768 remaining=1580.207 need=748.290 recover=1
+ECONOMY t=1.60 angle=6.264 rate=-0.077 scale=1.00000 remaining=1068.850 need=0.000 recover=1
+ECONOMY LOOP: alignment 2.00553959 deg rate -0.07690760 rad/s used 5931.14991636 Nms
+PASS | gas-limited physical recovery respects its real budget | 5931.14991636
+PASS | gas-limited recoverable fixture reaches wheels-first attitude | 0.999387448124
+RESULT 56/56 passed
