@@ -51,10 +51,10 @@ int main()
         }
     }
     FValveRequest R;
-    CHECK(SamplePreset(0, 1.f, R) && R.Roll > 0.f && R.Pitch > 0.f);
-    CHECK(SamplePreset(1, 1.f, R) && R.Roll == 1.f && R.Pitch == 0.f);
-    CHECK(SamplePreset(2, 1.f, R) && R.Pitch == 1.f && R.Roll == 0.f);
-    CHECK(SamplePreset(3, 1.f, R) && R.AttitudeBrake && R.Pitch == 0.f && R.Roll == 0.f);
+    CHECK(SamplePreset(0, PresetRotationStart(0) + .1f, R) && R.Roll > 0.f && R.Pitch > 0.f);
+    CHECK(SamplePreset(1, PresetRotationStart(1) + .1f, R) && R.Roll == 1.f && R.Pitch == 0.f);
+    CHECK(SamplePreset(2, PresetRotationStart(2) + .1f, R) && R.Pitch == 1.f && R.Roll == 0.f);
+    CHECK(SamplePreset(3, PresetRotationStart(3) + .1f, R) && R.AttitudeBrake && R.Pitch == 0.f && R.Roll == 0.f);
     std::printf("PASS %u checks: bounded curves, monotonic/symmetric deadzone, triggers, speed shaping, frame-independent smoothing, finite valve presets.\n", Checks);
     return 0;
 }

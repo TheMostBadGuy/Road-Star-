@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "5.7",
+	"EngineAssociation": "5.8",
 	"Category": "",
 	"Description": "Tesla Roadster (2nd gen) driving simulator with fan downforce, cold-gas thrusters and an inverted-track builder.",
 	"Modules": [

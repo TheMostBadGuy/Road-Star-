@@ -1,7 +1,7 @@
 # Cook and package the game to E:\TeslaRoadsterSim\Build (Windows, Shipping by default).
 #   powershell -ExecutionPolicy Bypass -File package.ps1 [-Config Development]
 param([string]$Config = "Shipping")
-$UE = "C:\Program Files\Epic Games\UE_5.7"
+$UE = "E:\Epic Games\UE_5.8"
 $Root = $PSScriptRoot
 # keep the derived-data cache on E: (C: has little free space)
 ${env:UE-LocalDataCachePath} = "$Root\DDC"

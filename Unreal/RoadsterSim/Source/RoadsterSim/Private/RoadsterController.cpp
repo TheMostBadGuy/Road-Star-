@@ -12,6 +12,7 @@
 #include "HAL/FileManager.h"
 #include "HAL/IConsoleManager.h"
 #include "RoadsterControlMath.h"
+#include "AssetCompilingManager.h"
 #include "Misc/App.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Dom/JsonObject.h"
@@ -20,6 +21,7 @@
 #include "GenericPlatform/GenericPlatformInputDeviceMapper.h"
 
 bool RunRoadsterTrackVerification(ARoadsterController* Controller);
+bool RunRoadsterRuntimePhysicsVerification(ARoadsterPawn* Pawn, FString& OutReport);
 
 extern int32 RoadsterLogLevel();
 extern void SetRoadsterLogLevel(int32 Level);
@@ -48,6 +50,12 @@ void ARoadsterController::BeginPlay()
 	SavedStunts.Sort();
 	if (!SavedStunts.IsEmpty()) LastRecordingFile = FPaths::ProjectSavedDir() / TEXT("Stunts") / SavedStunts.Last();
 	SetMode(EUIMode::Title);
+}
+
+void ARoadsterController::ConfigureCommandLine()
+{
+	// Possession can precede Pawn::BeginPlay. Apply scenarios and UI pages only once the
+	// pawn's screens and default reset exist, so startup cannot silently erase the request.
 	// command line: -autodrive (autopilot from the start), -track=N (preset), -cam=N (camera mode)
 	int32 TrackIdx = -1, CamIdx = -1;
 	if (FParse::Value(FCommandLine::Get(), TEXT("track="), TrackIdx))
@@ -99,7 +107,8 @@ void ARoadsterController::BeginPlay()
 	FString Review;
 	if (FParse::Value(FCommandLine::Get(), TEXT("review="), Review))
 	{
-		SetMode(Review == TEXT("builder") ? EUIMode::Builder : Review == TEXT("screen") ? EUIMode::Touchscreen : EUIMode::Driving);
+		const bool bLabReview = Review == TEXT("lab") || Review == TEXT("labflight") || Review == TEXT("labcontrols");
+		SetMode(Review == TEXT("builder") ? EUIMode::Builder : (Review == TEXT("screen") || bLabReview) ? EUIMode::Touchscreen : EUIMode::Driving);
 		bShowHints = false;
 		if (ARoadsterPawn* P = Car())
 		{
@@ -115,9 +124,31 @@ void ARoadsterController::BeginPlay()
 				P->Interface->Tab = ECarTab::Vehicle;
 				P->Interface->Page = EVehiclePage::Dynamics;
 			}
+			if (bLabReview && P->Interface)
+			{
+				URoadsterInterface::PrewarmSimulatorLab();
+				P->bTrackMode = false;
+				P->Interface->Tab = ECarTab::Vehicle;
+				P->Interface->Page = EVehiclePage::SimulatorLab;
+				P->Interface->SimulatorWorkspace = Review == TEXT("labflight") ? 1 : Review == TEXT("labcontrols") ? 2 : 0;
+			}
+			if (Review == TEXT("orbit") || Review == TEXT("upper")) P->StartRoadstarScenario(Review == TEXT("upper") ? 1 : 0);
+			if (Review == TEXT("doors")) { P->CameraMode = ERoadsterCamera::Orbit; P->bDoorsOpen = true; }
 		}
 	}
 	if (FParse::Param(FCommandLine::Get(), TEXT("controlcheck"))) RunControlCheck();
+	if (FParse::Param(FCommandLine::Get(), TEXT("simlabcheck")) && Car() && Car()->Interface)
+	{
+		FString Report;
+		Car()->Interface->RunSimulatorLabVerification(Report);
+		FFileHelper::SaveStringToFile(Report, *(FPaths::ProjectSavedDir() / TEXT("SimulatorLabCheck.txt")));
+	}
+	if (FParse::Param(FCommandLine::Get(), TEXT("runtimephysicscheck")) && Car())
+	{
+		FString Report;
+		RunRoadsterRuntimePhysicsVerification(Car(), Report);
+		FFileHelper::SaveStringToFile(Report, *(FPaths::ProjectSavedDir() / TEXT("RuntimePhysicsCheck.txt")));
+	}
 }
 
 void ARoadsterController::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -212,7 +243,24 @@ void ARoadsterController::PlayerTick(float DeltaTime)
 	if (!Down(EKeys::Gamepad_FaceButton_Bottom) && !Down(EKeys::Gamepad_FaceButton_Right)) bBlockPadActionsUntilRelease = false;
 	if (!Down(EKeys::SpaceBar)) bBlockSpaceUntilRelease = false;
 	ARoadsterPawn* P = Car();
-	PlayTime += DeltaTime;
+	if (!bCommandLineConfigured && P && P->Interface && P->HasActorBegunPlay() && Track() && Track()->HasActorBegunPlay())
+	{
+		bCommandLineConfigured = true;
+		ConfigureCommandLine();
+		UE_LOG(LogTemp, Display, TEXT("ROADSTER_REVIEW configured after pawn and track initialization"));
+	}
+	// Review runs (shots / timed exit) hold their clock while shaders, meshes and textures are still compiling,
+	// so captures from a cold cache never show placeholder materials (capped at 15 minutes).
+	const bool bReviewRun = ExitAfter > 0.f || ShotIndex < ShotTimes.Num();
+	if (bReviewRun && CompileWaitSeconds < 900.f && FAssetCompilingManager::Get().GetNumRemainingAssets() > 0)
+	{
+		if (CompileWaitSeconds == 0.f) UE_LOG(LogTemp, Display, TEXT("ROADSTER_REVIEW waiting for compilation"));
+		CompileWaitSeconds += DeltaTime;
+	}
+	else
+	{
+		PlayTime += DeltaTime;
+	}
 	if (ExitAfter > 0.f && PlayTime >= 5.f) { MeasuredFrameTime += DeltaTime; ++MeasuredFrames; ReviewFrameTimes.Add(DeltaTime * 1000.f); }
 	if (ExitAfter > 0.f && PlayTime >= ExitAfter)
 	{
@@ -220,8 +268,8 @@ void ARoadsterController::PlayerTick(float DeltaTime)
 		ReviewFrameTimes.Sort();
 		const float P95 = ReviewFrameTimes.IsEmpty() ? 0.f : ReviewFrameTimes[FMath::Min(ReviewFrameTimes.Num() - 1, FMath::FloorToInt(ReviewFrameTimes.Num() * 0.95f))];
 		const IConsoleVariable* Percentage = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage"));
-		const FString Report = FString::Printf(TEXT("Frames=%d\nElapsedSeconds=%.3f\nAverageFPS=%.2f\nP95FrameMilliseconds=%.2f\nResolution=%dx%d\nScreenPercentage=%.1f\nNote=Short review run, excludes first 5 seconds; screenshots can cause hitches.\n"),
-			MeasuredFrames, MeasuredFrameTime, MeasuredFrames / FMath::Max(MeasuredFrameTime, 0.001f), P95, W, H, Percentage ? Percentage->GetFloat() : -1.f);
+		const FString Report = FString::Printf(TEXT("Frames=%d\nElapsedSeconds=%.3f\nAverageFPS=%.2f\nP95FrameMilliseconds=%.2f\nResolution=%dx%d\nScreenPercentage=%.1f\nCompileWaitSeconds=%.1f\nNote=Short review run, excludes first 5 seconds; screenshots can cause hitches.\n"),
+			MeasuredFrames, MeasuredFrameTime, MeasuredFrames / FMath::Max(MeasuredFrameTime, 0.001f), P95, W, H, Percentage ? Percentage->GetFloat() : -1.f, CompileWaitSeconds);
 		FFileHelper::SaveStringToFile(Report, *(ShotDirectory / TEXT("performance.txt")));
 		UE_LOG(LogTemp, Display, TEXT("ROADSTER_REVIEW %s"), *Report.Replace(TEXT("\n"), TEXT(" ")));
 		ExitAfter = 0.f;
@@ -411,6 +459,15 @@ void ARoadsterController::DriveInput(float Dt)
 		ShowToast(P->bTrackMode ? TEXT("Track Mode - ESC OFF - TCS OFF") : TEXT("Track Mode off"));
 	}
 	if (Pressed(EKeys::L)) P->ExteriorLights = (P->ExteriorLights + 1) % 4;
+	if (Pressed(EKeys::U) || PadPressed(EKeys::Gamepad_DPad_Left))
+	{
+		if (P->Sim.T.Speed < 0.5 && !P->Sim.T.bAirborne)
+		{
+			P->bDoorsOpen = !P->bDoorsOpen;
+			ShowToast(P->bDoorsOpen ? TEXT("Doors opening") : TEXT("Doors closing"));
+		}
+		else ShowToast(TEXT("Stop before opening the doors"));
+	}
 	if (Pressed(EKeys::I)) { P->SetXRay(!P->bXRay); ShowToast(P->bXRay ? TEXT("Engineering view") : TEXT("Engineering view off")); }
 	if (Pressed(EKeys::M)) { CancelPilot(); Set.bHoverHold = false; P->SetTrim((Trim)(((int32)P->Sim.S.TrimLevel + 1) % 3)); ShowToast(FString::Printf(TEXT("Augment: %s"), *FString(TrimName(P->Sim.S.TrimLevel)))); }
 	if (Pressed(EKeys::N)) { Set.bInfiniteGas = !Set.bInfiniteGas; ShowToast(Set.bInfiniteGas ? TEXT("Unlimited nitrogen (demo)") : TEXT("Real tank")); }
@@ -591,6 +648,7 @@ void ARoadsterController::StartPreset()
 	P->Sim.Set.bHoverHold = false;
 	bPresetPlaying = true;
 	SequenceTime = 0.f;
+	PresetPhysicsTime = 0.0;
 	ShowToast(StuntPresetName() + TEXT(" valve sequence  |  move controls to cancel"));
 }
 
@@ -681,18 +739,8 @@ void ARoadsterController::ApplyPilotSequence(float Dt)
 	if (!P || P->bSimPaused || !bControlFocused) return;
 	if ((bReplaying || bPresetPlaying) && bManualPilotInput) CancelPilot(TEXT("Manual control - sequence cancelled"));
 	const float Step = FMath::Min(Dt, .05f) * P->TimeScale;
-	if (bPresetPlaying)
-	{
-		RoadsterControls::FValveRequest Request;
-		if (RoadsterControls::SamplePreset(SelectedStuntPreset, SequenceTime, Request))
-		{
-			P->Input = Inputs(); P->Input.Lift = Request.Lift; P->Input.Pitch = Request.Pitch;
-			P->Input.Roll = Request.Roll; P->Input.Yaw = Request.Yaw; P->Input.Boost = Request.Boost; P->Input.bAttitudeBrake = Request.AttitudeBrake;
-			SequenceTime += Step;
-		}
-		else { CancelPilot(TEXT("Valve sequence complete")); P->Input = Inputs(); }
-	}
-	else if (bReplaying)
+	if (bPresetPlaying) return; // advanced inside each Pawn physics substep
+	if (bReplaying)
 	{
 		while (ReplayIndex + 1 < RecordedInputs.Num() && RecordedInputs[ReplayIndex + 1].Time <= SequenceTime) ++ReplayIndex;
 		const FRecordedInput& Frame = RecordedInputs[ReplayIndex];
@@ -709,10 +757,31 @@ void ARoadsterController::ApplyPilotSequence(float Dt)
 	}
 }
 
+void ARoadsterController::ApplyPhysicsPreset(double StepSeconds)
+{
+	ARoadsterPawn* P = Car();
+	if (!bPresetPlaying || !P || P->bSimPaused || !bControlFocused) return;
+	RoadsterControls::FValveRequest Request;
+	if (RoadsterControls::SamplePreset(SelectedStuntPreset, static_cast<float>(PresetPhysicsTime), Request))
+	{
+		P->Input = Inputs();
+		P->Input.Lift = Request.Lift; P->Input.Pitch = Request.Pitch; P->Input.Roll = Request.Roll;
+		P->Input.Yaw = Request.Yaw; P->Input.Boost = Request.Boost; P->Input.bAttitudeBrake = Request.AttitudeBrake;
+		PresetPhysicsTime += StepSeconds;
+		SequenceTime = static_cast<float>(PresetPhysicsTime);
+	}
+	else { CancelPilot(TEXT("Valve sequence complete")); P->Input = Inputs(); }
+}
+
 void ARoadsterController::RunControlCheck()
 {
 	int32 Checks = 0, Failed = 0;
-	auto Check = [&](bool Pass) { ++Checks; if (!Pass) ++Failed; };
+	TArray<FString> FailureDetails;
+	auto Check = [&](bool Pass, const TCHAR* Label = TEXT("unlabeled assertion"))
+	{
+		++Checks;
+		if (!Pass) { ++Failed; FailureDetails.Add(FString::Printf(TEXT("%d: %s"), Checks, Label)); }
+	};
 	Check(RoadsterControls::Curve(.05f, .1f, 1.5f) == 0.f);
 	Check(RoadsterControls::Curve(1.f, .1f, 1.5f) == 1.f);
 	Check(RoadsterControls::Curve(-1.f, .1f, 1.5f) == -1.f);
@@ -731,7 +800,10 @@ void ARoadsterController::RunControlCheck()
 		const Inputs SavedInput = P->Input;
 		const Settings SavedSettings = P->Sim.Set;
 		const bool SavedPaused = P->bSimPaused;
+		const bool SavedFocus = bControlFocused;
 		P->bSimPaused = false;
+		// This deterministic check simulates both focus states; the production focus guard stays active.
+		bControlFocused = true;
 		TArray<FRecordedInput> SavedFrames = RecordedInputs;
 		const FString SavedLast = LastRecordingFile, SavedToast = Toast;
 		const float SavedToastTime = ToastTime;
@@ -749,22 +821,29 @@ void ARoadsterController::RunControlCheck()
 			ReplayLastRecording(); Check(bReplaying);
 			bManualPilotInput = false;
 			ApplyPilotSequence(.016f);
-			Check(P->Input.Lift == 1. && P->Input.Pitch == -.5 && P->Input.bAttitudeBrake);
+			Check(P->Input.Lift == 1. && P->Input.Pitch == -.5 && P->Input.bAttitudeBrake, TEXT("focused replay bounds and applies saved inputs"));
+			const float FocusedTime = SequenceTime;
+			bControlFocused = false;
+			ApplyPilotSequence(.016f);
+			Check(SequenceTime == FocusedTime && bReplaying, TEXT("unfocused replay does not advance"));
+			bControlFocused = true;
 			bManualPilotInput = true;
-			ApplyPilotSequence(.016f); Check(!bReplaying);
+			ApplyPilotSequence(.016f); Check(!bReplaying, TEXT("manual control cancels focused replay"));
 			FFileHelper::SaveStringToFile(TEXT("{\"version\":1,\"frames\":[{\"t\":0.1},{\"t\":0.05}]}"), *TestFile);
 			ReplayLastRecording(); Check(!bReplaying);
 			Check(IFileManager::Get().Delete(*TestFile));
 		}
 		P->Input = SavedInput; P->Sim.Set = SavedSettings;
 		P->bSimPaused = SavedPaused;
+		bControlFocused = SavedFocus;
 		RecordedInputs = MoveTemp(SavedFrames); LastRecordingFile = SavedLast;
 		Toast = SavedToast; ToastTime = SavedToastTime; bAutopilot = SavedAutopilot;
 		bRecording = bReplaying = bPresetPlaying = bManualPilotInput = false; SequenceTime = 0.f; ReplayIndex = 0;
 	}
 	else Check(false);
 	const FString Report = FString::Printf(TEXT("Status=%s\nChecks=%d\nFailed=%d\nDevice=%s\nNativeSDLAvailable=%d\nNativeSonyConnected=%d\nNote=Control math, finite valve requests, JSON save/load, bounded replay, manual cancellation and invalid timeline rejection checked in Unreal; no physical controller or flight trajectory verified.\n"), Failed ? TEXT("FAIL") : TEXT("PASS"), Checks, Failed, *GetControlDeviceLabel(), NativePad.IsAvailable() ? 1 : 0, NativePad.IsConnected() ? 1 : 0);
-	FFileHelper::SaveStringToFile(Report, *(FPaths::ProjectSavedDir() / TEXT("ControlCheck.txt")));
+	const FString FullReport = Report + TEXT("FocusTest=Simulated focused/unfocused replay states; native window focus remains production guarded.\n") + FString::Join(FailureDetails, TEXT("\n"));
+	FFileHelper::SaveStringToFile(FullReport, *(FPaths::ProjectSavedDir() / TEXT("ControlCheck.txt")));
 	UE_LOG(LogTemp, Display, TEXT("ROADSTER_CONTROL_CHECK %s"), *Report.Replace(TEXT("\n"), TEXT(" ")));
 }
 

@@ -11,7 +11,7 @@ class UCanvas;
 UENUM()
 enum class ECarTab : uint8 { Home, Vehicle, Listen, Climate, Navigate };
 UENUM()
-enum class EVehiclePage : uint8 { Dynamics, Suction, Tires, Thrusters, Lights, Display, Charging, ColdGas };
+enum class EVehiclePage : uint8 { Dynamics, Suction, Tires, Thrusters, Lights, Display, Charging, ColdGas, SimulatorLab };
 
 /**
  * The Roadster's centre touchscreen and the two forward displays, recreated from Tesla's official
@@ -45,6 +45,21 @@ public:
 	float MusicT = 147.f;
 	float ChargeLimit = 0.9f;
 
+	// Simulator-only workspaces: 0 gas fill, 1 flight/orbit, 2 controls. Ordinary launches stay on Home.
+	int32 SimulatorWorkspace = 0;
+	int32 LabGasSpecies = 0;   // ColdGas::GasSpecies: nitrogen, helium, argon
+	int32 LabFillMode = 0;     // 0 pressure, 1 installed-vessel gas mass (manifold excluded)
+	float LabFillPressureBar = 379.f, LabFillTemperatureK = 293.f, LabFillMassKg = 1.f;
+	FString LabFillStatus, LabFillDetail;
+	bool bLabFillRejected = false;
+	/** Call before an interactive lab review to pay the shared EOS-table startup cost once. */
+	static void PrewarmSimulatorLab();
+	void SyncSimulatorLabDraft();
+	/** Explicit pit operation. Rejected fills preserve the live gas system, vehicle mass and pilot inputs. */
+	bool ApplySimulatorLabFill();
+	/** Exercises the same fill operation used by the buttons, then restores the vehicle and draft. */
+	bool RunSimulatorLabVerification(FString& OutReport);
+
 private:
 	RoadsterUI::FContext UI;
 	float CarYaw = 215.f, CarPitch = -14.f, CarYawTarget = 215.f, CarPitchTarget = -14.f;
@@ -52,6 +67,9 @@ private:
 	double LastTime = 0.0;
 	bool bDragCar = false;
 	float DragStartX = 0.f, DragStartYaw = 0.f;
+	bool bLabDraftInitialized = false;
+	int32 LabDraftTrim = -1;
+	FString LabScenarioStatus, LabControlStatus;
 
 	void TopBar();
 	void DriveStrip();
@@ -77,6 +95,10 @@ private:
 	void PageLights(float X, float Y, float W, float H);
 	void PageDisplay(float X, float Y, float W, float H);
 	void PageCharging(float X, float Y, float W, float H);
+	void PageSimulatorLab(float X, float Y, float W, float H);
+	void LabGasPage(float X, float Y, float W, float H);
+	void LabFlightPage(float X, float Y, float W, float H);
+	void LabControlsPage(float X, float Y, float W, float H);
 
 	FString Speed(double Mps, bool bUnit = false) const;
 	FString Temp(double C) const;

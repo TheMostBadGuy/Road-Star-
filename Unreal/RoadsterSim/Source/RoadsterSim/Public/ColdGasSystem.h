@@ -21,8 +21,9 @@
 //    Yokozeki, J. Phys. Chem. Ref. Data 29 (2000) 1361]. The translated EOS is one Helmholtz function
 //    A(T,v) = A_PR(T, v + c), so p, u, h, s, cv, cp, w and mu_JT are mutually consistent. Ideal part: 5/2 R plus an
 //    Einstein vibrational term (theta = 3353 K). Validated against NIST WebBook SRD 69 (Span 2000 reference EOS) over
-//    200-350 K and 1-700 bar: density within +-1.3 %, enthalpy within +-2.4 kJ/kg, JT coefficient within +-0.03 K/bar
-//    (the harness reprints the comparison). Plain PR is 6-12 % too dense there, so the translation matters.
+//    the 20 checked-in 200-350 K, 1-701 bar reference rows: max density error 1.953 %, enthalpy 2.363 kJ/kg,
+//    JT coefficient 0.03304 K/bar (Verification-20261026/Physics/NitrogenEOSChecks.cpp). These sampled errors are
+//    not continuous-envelope bounds. The harness reprints the comparison; the volume translation reduces PR density error.
 //    Saturation ancillaries (p_sat, rho', rho''): Span et al. (2000). Transport: dilute-gas Sutherland viscosity and a
 //    power-law conductivity plus density-only residual polynomials (Jossi-Stiel-Thodos form) fitted to NIST
 //    (+-2 % outside the near-critical region).

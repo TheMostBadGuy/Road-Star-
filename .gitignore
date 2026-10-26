@@ -26,3 +26,11 @@ Temp/
 Backups/
 Tests/Audit-*/*.exe
 Tests/Audit-*/*.obj
+Tests/*/*.exe
+Tests/*/*.obj
+# parallel agents' sandboxes, generated HD texture sets and mod build output
+Parallel/
+Textures/HD/
+TeslaRoadsterMod/bin/
+TeslaRoadsterMod/obj/
+Tools/warp-venv/

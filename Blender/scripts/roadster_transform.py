@@ -153,23 +153,61 @@ def apply_modifier(ob, mod):
     ob.select_set(False)
 
 
+def clean_panel(ob):
+    """Merge duplicate vertices, dissolve zero-length edges / zero-area faces left by the bisect cuts, drop loose verts."""
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6)
+    bmesh.ops.dissolve_degenerate(bm, edges=bm.edges, dist=1e-6)
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    bm.to_mesh(ob.data)
+    ob.data.update()
+    bm.free()
+
+
 def solidify(ob, thickness, mat_offset=0, rim_offset=0, offset=-1.0):
+    """Give a panel its thickness. Plain offset along the vertex normals: Blender's even-thickness option divides by
+    the cosine of the face/normal angle, which threw the vertices of near-degenerate bisect slivers metres to
+    kilometres away (doors, door glass, wing, barges, headlight covers)."""
+    clean_panel(ob)
+    lo = [min(v.co[i] for v in ob.data.vertices) for i in range(3)]
+    hi = [max(v.co[i] for v in ob.data.vertices) for i in range(3)]
     m = ob.modifiers.new("Solidify", 'SOLIDIFY')
     m.thickness = thickness
     m.offset = offset
     m.use_rim = True
-    m.use_even_offset = True
-    m.use_quality_normals = True
+    m.use_even_offset = False
+    m.use_quality_normals = False
     m.material_offset = mat_offset
     m.material_offset_rim = rim_offset
     apply_modifier(ob, m)
+    pad = 2.0 * thickness + 0.002
+    bad = sum(1 for v in ob.data.vertices if any(v.co[i] < lo[i] - pad or v.co[i] > hi[i] + pad for i in range(3)))
+    if bad:
+        raise RuntimeError("solidify %s: %d vertices left the panel envelope" % (ob.name, bad))
 
 
 def inset_border(ob, d):
-    """Pull the open border of a panel back along its own surface by d (the shut-line gap)."""
+    """Pull the open border of a panel back along its own surface by d (the shut-line gap). Interior vertices that the
+    pull would cross (the slivers a bisect leaves along its cut) are welded onto the border first; otherwise their faces
+    fold over and solidify extrudes them into black spikes along the shut line."""
     bm = bmesh.new()
     bm.from_mesh(ob.data)
+    welded = 0
+    for _ in range(8):                   # creased edges pack several thin rows against the border
+        border = {v for e in bm.edges if e.is_boundary for v in e.verts}
+        weld = {}
+        for b in border:
+            for e in b.link_edges:
+                n = e.other_vert(b)
+                if n not in border and n not in weld and (n.co - b.co).length < 2.2 * d:
+                    weld[n] = b
+        if not weld:
+            break
+        bmesh.ops.weld_verts(bm, targetmap=weld)
+        welded += len(weld)
     bm.normal_update()
+    before = {f: f.normal.copy() for f in bm.faces}
     dirs = {}
     for e in bm.edges:
         if not e.is_boundary:
@@ -192,6 +230,15 @@ def inset_border(ob, d):
         m.normalize()
         c = max(0.5, sum(m.dot(x) for x in ds) / len(ds))
         v.co += m * (d / c)
+    bm.normal_update()
+    # faces the pull still turned over (acute border corners): collapse each to its centre so nothing folds through
+    flipped = [f for f, n in before.items() if f.is_valid and f.normal.dot(n) < 0.0]
+    for f in flipped:
+        if f.is_valid:
+            bmesh.ops.pointmerge(bm, verts=list(f.verts), merge_co=f.calc_center_median())
+    bm.normal_update()
+    left = sum(1 for f, n in before.items() if f.is_valid and f.normal.dot(n) < 0.0)
+    print("INSET %s: welded %d, collapsed %d flipped faces, %d left" % (ob.name, welded, len(flipped), left))
     bm.to_mesh(ob.data)
     ob.data.update()
     bm.free()
@@ -237,6 +284,7 @@ def ensure_uvs(ob):
 
 def merge_into(dst, src):
     """Append src's geometry (world space) to dst, remapping materials; src is deleted."""
+    bpy.context.view_layer.update()      # matrix_world is stale right after set_pivot() moves dst's origin
     mats = list(dst.data.materials)
     remap = []
     for m in src.data.materials:
@@ -354,17 +402,26 @@ DOOR_OPEN_DEG = 98.0           # matched against Slide-3 (doors stand ~vertical,
 _OUTLINE = []
 
 
+def on_line(p, q, z):
+    """Point at height z on the XZ line through p and q."""
+    return (p[0] + (q[0] - p[0]) * (z - p[1]) / (q[1] - p[1]), z)
+
+
 def door_outline():
-    """Closed XZ polygon of the door (left side); the bottom follows row 3 two centimetres low (material decides)."""
+    """Closed XZ polygon of the door (left side). The front and rear edges lie exactly on their cut planes (extended
+    2 cm below the sill crease), so every face a cut split falls wholly on one side and the shut line stays straight;
+    the bottom follows row 3 two centimetres low (the paint/black material boundary decides the real edge)."""
     if _OUTLINE:
         return _OUTLINE
-    pts = [(DOOR_FRONT_X0, row_z(3, DOOR_FRONT_X0) - 0.02)]
-    pts += [p for p in DOOR_XZ[:-1]]
+    zf = row_z(3, DOOR_FRONT_X0)
+    front = on_line((DOOR_FRONT_X0, zf), DOOR_XZ[0], zf - 0.02)
     xr = DOOR_XZ[-1][0]
-    pts.append((xr, row_z(3, xr) - 0.02))
+    zr = row_z(3, xr)
+    rear = on_line(DOOR_XZ[-2], (xr, zr), zr - 0.02)
+    pts = [front] + [p for p in DOOR_XZ[:-1]] + [rear]
     n = 24
     for k in range(1, n):
-        x = xr + (DOOR_FRONT_X0 - xr) * k / n
+        x = rear[0] + (front[0] - rear[0]) * k / n
         pts.append((x, row_z(3, x) - 0.02))
     _OUTLINE.extend(pts)
     return _OUTLINE
@@ -546,6 +603,7 @@ def split_door_trim(interior, doors, side_details, M):
 
 # ============================================================================= rear wing
 X_SEAM = -1.705                       # deck seam = rear-window trailing edge (Slide-2)
+X_TE = -2.085                         # wing trailing-edge cut, on the flat deck 12 mm ahead of the tail crease (-2.097)
 END_SEAM = ((-1.705, 0.975), (-2.040, 0.640))    # end-plate front seam on the tail corner (Sawyer frame 0.1 s)
 END_BOTTOM = 0.640                    # end-plate lower edge (top of the black lower body, Hero rear photo)
 WING_PIVOT = V((-1.860, 0.0, 0.888))  # pitch axis under the wing, ~38 % chord, at the strut tips
@@ -564,8 +622,8 @@ def is_wing_face(f):
         return False
     c = f.calc_center_median()
     n = f.normal
-    if n.x < -0.70:                     # the rear face (tail light band) stays on the body
-        return False
+    if c.x < X_TE:                      # the tail crease, rear face and tail corners stay on the body (a real cut:
+        return False                    # normal thresholds gave a ragged trailing edge on the rounded corners)
     if c.x < X_SEAM and c.z > 0.86 and n.z > 0.30 and abs(c.y) < 1.0:
         return True                     # deck top behind the rear window
     if abs(c.y) > 0.55 and END_BOTTOM < c.z < 1.0 and c.x < end_seam_x(c.z) and c.x < -1.60:
@@ -581,6 +639,7 @@ def cut_wing(body, M):
     co, no = segment_plane(*END_SEAM)
     bisect(bm, co, no, tailbox)
     bisect(bm, (0, 0, END_BOTTOM), (0, 0, 1), ((-2.30, -1.70), (-1.20, 1.20), (0.55, 0.75)))
+    bisect(bm, (X_TE, 0, 0), (1, 0, 0), ((-2.12, -2.05), (-1.20, 1.20), (0.60, 1.00)))
     bm.to_mesh(body.data)
     body.data.update()
     bm.free()
@@ -804,7 +863,7 @@ def is_barge_face(f, side):
         return False
     if c.z > BARGE_TOP or c.z < row_z(3, c.x) - 0.03:
         return False
-    return c.x > shut_front_x(c.z) + 0.002
+    return c.x > shut_front_x(c.z)        # the shut-line cut splits faces, so no margin (slivers would be orphaned)
 
 
 def cut_barges(body, M):

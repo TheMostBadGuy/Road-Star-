@@ -1,5 +1,7 @@
 # Roadster simulation goal
 
+**Latest checkpoint: 26 October 2026.** Read `Verification-20261026/CONTINUATION.md` first, then `Coordination/CODEX_RESUME_20261026.md` for takeover history. Current engine is UE5.8.4, HEAD `9e29e02` plus preserved changes. Updated Editor/Game builds pass and actual Simulator Lab checks23/23pass. Real-world collision checks found loop adhesion and high-speed penetration defects now under repair; headlight self-intersection candidate remains isolated until visual/clearance proof. Current evidence is under `Verification-20261026/`. Cooking, packaging, complete car-part clearance and target graphical quality remain unverified acceptance criteria.
+
 User request dated 2026-10-25 (America/New_York). Project: `E:\TeslaRoadsterSim`.
 
 ## Objective and acceptance

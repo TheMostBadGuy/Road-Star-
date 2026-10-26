@@ -1,5 +1,5 @@
 param(
-    [string]$Executable = 'C:\Program Files\Epic Games\UE_5.7\Engine\Binaries\Win64\UnrealEditor.exe',
+    [string]$Executable = 'E:\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe',
     [switch]$Packaged,
     [string]$Label = 'EditorReview'
 )

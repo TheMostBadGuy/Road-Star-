@@ -57,11 +57,16 @@ public:
 	bool IsReplaying() const { return bReplaying; }
 	bool IsStuntActive() const { return bPresetPlaying; }
 	bool IsVirtualCursorActive() const { return bVirtualCursor; }
+	/** Sample finite valve presets on the same clock as rigid-body integration. */
+	void ApplyPhysicsPreset(double StepSeconds);
 
 private:
+	bool bCommandLineConfigured = false;
+	void ConfigureCommandLine();
 	int32 AutoIndex = 0;
 	TArray<float> ShotTimes;
 	float PlayTime = 0.f;
+	float CompileWaitSeconds = 0.f;
 	int32 ShotIndex = 0;
 	float ExitAfter = 0.f;
 	float MeasuredFrameTime = 0.f;
@@ -108,6 +113,7 @@ private:
 	FString LastRecordingFile;
 	bool bRecording = false, bReplaying = false, bPresetPlaying = false, bSavedFlightAssist = true;
 	float SequenceTime = 0.f;
+	double PresetPhysicsTime = 0.0;
 	int32 ReplayIndex = 0, SelectedStuntPreset = 0;
 
 	void DriveInput(float Dt);

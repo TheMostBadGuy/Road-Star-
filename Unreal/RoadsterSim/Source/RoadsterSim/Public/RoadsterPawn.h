@@ -67,6 +67,10 @@ public:
 	bool bXRay = false;
 	float SpeedFeelIntensity = 1.f;
 	void SetXRay(bool bOn);
+	/** Authored hinge demonstration; travel and timing are simulator estimates. */
+	bool bDoorsOpen = false;
+	float GetHeadlightOpenFraction() const { return HeadlightOpenFraction; }
+	bool AreHeadlightsRequested() const { return bHeadlightsRequested; }
 
 	// ------------------------------------------------------------ car state toggles (UI)
 	int32 ExteriorLights = 3;      // Off / DRL / On / Auto
@@ -101,6 +105,9 @@ protected:
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> BargeL;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> BargeR;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Skirts;
+	UPROPERTY() TObjectPtr<UStaticMeshComponent> WingStruts;
+	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> AdditionalHingedParts;
+	UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> SkirtParts;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> Yoke;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> ScreenDisplay;
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> ForwardA;
@@ -141,6 +148,7 @@ protected:
 	friend class URoadsterFlowOverlay;
 	friend class URoadsterPhysicsLab;
 	friend class URoadsterJetVFX;
+	friend bool RunRoadsterRuntimePhysicsVerification(ARoadsterPawn* Pawn, FString& OutReport);
 
 private:
 	double Accumulator = 0.0;
@@ -154,6 +162,13 @@ private:
 	float OrbitYaw = 200.f, OrbitPitch = -12.f;
 	float CaptureTimer = 0.f, ScreenTimer = 0.f;
 	float CinematicTimer = 0.f;
+	float DoorOpenFraction = 0.f;
+	float VentOpenFraction = 0.f;
+	float BargeOpenFraction = 0.f;
+	float HeadlightOpenFraction = 0.f;
+	float AutoHeadlightTimer = 0.f;
+	bool bAutoHeadlights = false;
+	bool bHeadlightsRequested = false;
 	FVector CinematicPos = FVector::ZeroVector;
 	bool bCamInit = false;
 

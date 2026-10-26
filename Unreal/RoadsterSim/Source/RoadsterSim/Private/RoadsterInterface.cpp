@@ -268,13 +268,13 @@ void URoadsterInterface::HomeTab()
 // ============================================================================ Vehicle tab
 void URoadsterInterface::VehicleTab()
 {
-	const TArray<FString> Pages = { TEXT("Dynamics"), TEXT("Suction"), TEXT("Tires"), TEXT("Thrusters"), TEXT("Lights"), TEXT("Display"), TEXT("Charging"), TEXT("Gas Lab") };
-	float X = 160;
+	const TArray<FString> Pages = { TEXT("Dynamics"), TEXT("Suction"), TEXT("Tires"), TEXT("Thrusters"), TEXT("Lights"), TEXT("Display"), TEXT("Charging"), TEXT("Gas Lab"), TEXT("Simulator Lab") };
+	float X = 140;
 	for (int32 i = 0; i < Pages.Num(); ++i)
 	{
 		const bool bOn = (int32)Page == i;
-		const float TW = UI.TextWidth(Pages[i], 30, bOn) + 60;
-		UI.Text(Pages[i], X + TW * 0.5f, 120, 30, bOn ? Red : RedDim, EAlign::Center, bOn);
+		const float TW = 1720.f / Pages.Num();
+		UI.Text(Pages[i], X + TW * 0.5f, 120, 26, bOn ? Red : RedDim, EAlign::Center, bOn);
 		if (bOn) UI.Rect(X + 20, 148, TW - 40, 3, Red);
 		if (UI.Clicked(X, 90, TW, 60)) { Page = (EVehiclePage)i; UI.bConsumedClick = true; }
 		X += TW;
@@ -290,6 +290,7 @@ void URoadsterInterface::VehicleTab()
 	case EVehiclePage::Display: PageDisplay(PX, PY, PW, PH); break;
 	case EVehiclePage::Charging: PageCharging(PX, PY, PW, PH); break;
 	case EVehiclePage::ColdGas: PageColdGas(PX, PY, PW, PH); break;
+	case EVehiclePage::SimulatorLab: PageSimulatorLab(PX, PY, PW, PH); break;
 	}
 }
 
@@ -323,6 +324,8 @@ void URoadsterInterface::PageDynamics(float X, float Y, float W, float H)
 			UI.Text(Rows[i][0], OX + 24, Y + i * 96 + 42, 27, Red);
 			UI.Text(Rows[i][1], OX + OW - 24, Y + i * 96 + 42, 27, Red, EAlign::Right, true);
 		}
+		// Pedal behaviour is independent of the drive preset, as in the car's Pedals & Steering settings
+		Set.Stopping = (StoppingMode)UI.Segmented(OX, Y + 3 * 96, OW, 84, TEXT("Stopping Mode"), { TEXT("Creep"), TEXT("Roll"), TEXT("Hold") }, (int32)Set.Stopping);
 	}
 	else
 	{
@@ -334,6 +337,7 @@ void URoadsterInterface::PageDynamics(float X, float Y, float W, float H)
 		Set.bLowSuspension = UI.Segmented(OX, RY, OW, RH, TEXT("Suspension"), { TEXT("Standard"), TEXT("Low") }, Set.bLowSuspension ? 1 : 0) == 1; RY += Gap;
 		const int32 V = UI.Segmented(OX, RY, OW, RH, TEXT("Vent Hood"), { TEXT("Close"), TEXT("Open") }, Set.bHoodVentOpen ? 1 : 0); RY += Gap;
 		const int32 B = UI.Segmented(OX, RY, OW, RH, TEXT("Barge Board"), { TEXT("Retract"), TEXT("Deploy") }, Set.bBargeDeployed ? 1 : 0); RY += Gap;
+		Set.Stopping = (StoppingMode)UI.Segmented(OX, RY, OW, RH, TEXT("Stopping Mode"), { TEXT("Creep"), TEXT("Roll"), TEXT("Hold") }, (int32)Set.Stopping); RY += Gap;
 		if (FW != (int32)Set.FWing || RW != (int32)Set.RWing || V != (Set.bHoodVentOpen ? 1 : 0) || B != (Set.bBargeDeployed ? 1 : 0))
 		{
 			Set.Aero = AeroPreset::Custom; Set.FWing = (FrontWing)FW; Set.RWing = (RearWing)RW; Set.bHoodVentOpen = V == 1; Set.bBargeDeployed = B == 1;
@@ -447,19 +451,19 @@ void URoadsterInterface::PageThrusters(float X, float Y, float W, float H)
 	RY += 96;
 	Set.bFlightAssist = UI.Segmented(X, RY, 980, 84, TEXT("Flight assist"), { TEXT("Off"), TEXT("On") }, Set.bFlightAssist ? 1 : 0, 200) == 1; RY += 96;
 	Set.bInfiniteGas = UI.Segmented(X, RY, 980, 84, TEXT("Gas supply"), { TEXT("Tank (real)"), TEXT("Unlimited (demo)") }, Set.bInfiniteGas ? 1 : 0, 200) == 1; RY += 96;
-	if (UI.Button(X, RY + 10, 480, 80, TEXT("Refill nitrogen (pit)"), false)) Pawn->Sim.RefillTank();
+	if (UI.Button(X, RY + 10, 480, 80, TEXT("Refill selected gas (pit)"), false)) Pawn->Sim.RefillTank();
 	if (UI.Button(X + 500, RY + 10, 480, 80, TEXT("Recharge battery (pit)"), false)) Pawn->Sim.Recharge();
 
 	const float LX = X + 1030, LW = 690;
 	UI.Panel(LX, Y, LW, 720);
 	UI.Text(TEXT("Cold-Gas Thrusters"), LX + 24, Y + 40, 30, Red, EAlign::Left, true);
-	UI.Text(S.TankVolumeL > 0 ? FString::Printf(TEXT("%d L carbon COPV · nitrogen · %s"), FMath::RoundToInt(S.TankVolumeL), S.bHasLiftThrusters ? TEXT("4 rear + 4 lift + 2 yaw") : TEXT("4 rear nozzles")) : FString(TEXT("Not fitted on Performance")), LX + 24, Y + 78, 20, RedDim);
+	UI.Text(S.TankVolumeL > 0 ? FString::Printf(TEXT("%d L carbon COPV · %s · %s"), FMath::RoundToInt(S.TankVolumeL), UTF8_TO_TCHAR(Pawn->Sim.Gas.PropellantProperties().Name), S.bHasLiftThrusters ? TEXT("4 rear + 4 lift + 2 yaw") : TEXT("4 rear nozzles")) : FString(TEXT("Not fitted on Performance")), LX + 24, Y + 78, 20, RedDim);
 	if (S.TankVolumeL > 0)
 	{
 		UI.Digits(FString::Printf(TEXT("%d"), FMath::RoundToInt(T.TankBar * kPsiPerBar)), LX + LW * 0.5f, Y + 230, 120, Red, EAlign::Center);
 		UI.Text(TEXT("PSI"), LX + LW * 0.5f, Y + 320, 24, RedDim, EAlign::Center, true);
 		UI.Bar(LX + 24, Y + 380, LW - 48, 22, T.TankPercent, Red, true);
-		UI.Text(FString::Printf(TEXT("%d%%  ·  %.1f kg N2"), FMath::RoundToInt(T.TankPercent * 100), T.TankKg), LX + 24, Y + 440, 26, Red);
+		UI.Text(FString::Printf(TEXT("%d%%  ·  %.1f kg %s"), FMath::RoundToInt(T.TankPercent * 100), T.TankKg, Pawn->Sim.Gas.Propellant() == ColdGas::GasSpecies::Helium ? TEXT("He") : Pawn->Sim.Gas.Propellant() == ColdGas::GasSpecies::Argon ? TEXT("Ar") : TEXT("N2")), LX + 24, Y + 440, 26, Red);
 		const ColdGas::System& G = Pawn->Sim.Gas;
 		UI.Text(FString::Printf(TEXT("Impulse left %.0f kN·s"), G.RemainingImpulseNs() / 1000.0), LX + LW - 24, Y + 440, 24, Red, EAlign::Right);
 		UI.Text(FString::Printf(TEXT("Rear thrust available  %.0f kN"), 4 * G.MaxThrustN(0) * Set.BoostLevel / 1000.0), LX + 24, Y + 500, 24, Red);
@@ -508,7 +512,7 @@ void URoadsterInterface::PageColdGas(float X, float Y, float W, float H)
 
 	UI.Text(TEXT("Cold-Gas System"), X, Y + 10, 32, Red, EAlign::Left, true);
 	UI.Text(TEXT("SIMULATION ENGINEERING VIEW - hardware parameters are estimates"), X, Y + H + 4, 18, RedDim);
-	UI.Text(FString::Printf(TEXT("nitrogen  ·  %s  ·  %s"), GT.bArmed ? TEXT("ARMED") : TEXT("SAFE"), GT.bRegDropout ? TEXT("UNREGULATED BLOWDOWN") : (GT.bRegLockedUp ? TEXT("REGULATOR LOCK-UP") : TEXT("REGULATING"))),
+	UI.Text(FString::Printf(TEXT("%s  ·  %s  ·  %s"), UTF8_TO_TCHAR(G.PropellantProperties().Name), GT.bArmed ? TEXT("ARMED") : TEXT("SAFE"), GT.bRegDropout ? TEXT("UNREGULATED BLOWDOWN") : (GT.bRegLockedUp ? TEXT("REGULATOR LOCK-UP") : TEXT("REGULATING"))),
 		X + 330, Y + 10, 24, GT.bRegDropout ? Amber : RedDim);
 
 	// ---- vessels
@@ -528,7 +532,7 @@ void URoadsterInterface::PageColdGas(float X, float Y, float W, float H)
 		UI.Text(TEXT("PSI"), TX + 230, TY + 92, 20, RedDim);
 		UI.Text(FString::Printf(TEXT("gas %.0f °C   liner %.0f °C   %.1f kg"), Tk.TempK - 273.15, Tk.LinerMinK - 273.15, Tk.MassKg), TX + 16, TY + 150, 19, Red);
 		FString Flags;
-		if (Tk.bTwoPhase) Flags += TEXT("N2 CONDENSING  ");
+		if (Tk.bTwoPhase) Flags += TEXT("GAS CONDENSING  ");
 		if (Tk.bLinerBelowRating) Flags += TEXT("LINER COLD  ");
 		if (Tk.bReliefOpen) Flags += TEXT("RELIEF  ");
 		if (Tk.bCutoff) Flags += TEXT("ISOLATED - RESIDUAL");
@@ -948,7 +952,7 @@ void URoadsterInterface::DrawForwardDisplay(UCanvas* Canvas, int32 W, int32 H, i
 		{
 			F.Rect(1180, 400, 640, 20, RedFaint);
 			F.Rect(1180, 400, 640 * T.TankPercent, 20, Red);
-			F.Text(TEXT("N2"), 1170, 410, 40, RedDim, EAlign::Right, true);
+			F.Text(Pawn->Sim.Gas.Propellant() == ColdGas::GasSpecies::Helium ? TEXT("He") : Pawn->Sim.Gas.Propellant() == ColdGas::GasSpecies::Argon ? TEXT("Ar") : TEXT("N2"), 1170, 410, 40, RedDim, EAlign::Right, true);
 		}
 		if (T.FanDownforceN > 500) F.Text(FString::Printf(TEXT("SUCTION %.1f kN"), T.FanDownforceN / 1000.0), 1860, 90, 42, Red, EAlign::Right, true);
 	}

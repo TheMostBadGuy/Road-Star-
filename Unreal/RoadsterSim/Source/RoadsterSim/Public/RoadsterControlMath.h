@@ -44,23 +44,28 @@ inline const char* PresetName(int Preset)
     const char* Names[] = { "Kickflip", "Barrel roll", "Backflip", "Hop" };
     return Names[(Preset % 4 + 4) % 4];
 }
-inline float PresetDuration(int Preset) { return Preset == 3 ? 1.6f : 2.5f; }
+inline float PresetRotationStart(int Preset) { return Preset == 0 ? 1.7f : (Preset == 1 ? 1.5f : (Preset == 2 ? 1.4f : .5f)); }
+inline float PresetRotationEnd(int Preset) { return PresetRotationStart(Preset) + (Preset < 2 ? .6f : 1.f); }
+inline float PresetDuration(int Preset) { return Preset == 3 ? 1.6f : PresetRotationEnd(Preset) + 1.f; }
 inline bool SamplePreset(int Preset, float Time, FValveRequest& Out)
 {
     Out = {};
     if (!std::isfinite(Time) || Time < 0.f || Time >= PresetDuration(Preset)) return false;
-    // These open-loop requests operate real valves. Rotation/height depend on
-    // trim, gas, attitude and starting motion; no pose or velocity is scripted.
-    if (Time < .5f) Out.Lift = 1.f;
+    // EST valve timing, checked on the finite-N2 Rocket from rest. The 1.4-1.7 s
+    // flip launch supplies ballistic recovery time before requesting rotation;
+    // the old .5 s launch made the landing supervisor abort the named flips.
+    // Requests operate real valves. Gas, attitude and initial motion determine
+    // the result; no pose or velocity is scripted, and the landing guard stays on.
+    if (Time < PresetRotationStart(Preset)) Out.Lift = 1.f;
     else if (Preset == 3)
     {
         Out.Lift = Time < .85f ? .42f : 0.f;
         Out.AttitudeBrake = true;
     }
-    else if (Time < 1.65f)
+    else if (Time < PresetRotationEnd(Preset))
     {
         Out.Lift = .26f;
-        if (Preset == 0) { Out.Roll = .9f; Out.Pitch = .55f; }
+        if (Preset == 0) { Out.Roll = .9f; Out.Pitch = .1f; }
         if (Preset == 1) Out.Roll = 1.f;
         if (Preset == 2) Out.Pitch = 1.f;
     }

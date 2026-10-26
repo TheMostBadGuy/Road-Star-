@@ -18,6 +18,8 @@
 #include "Sound/SoundWave.h"
 #include "EngineUtils.h"
 #include "Engine/World.h"
+#include "Engine/DirectionalLight.h"
+#include "Components/DirectionalLightComponent.h"
 #include "Kismet/GameplayStatics.h"
 
 using namespace Roadster;
@@ -67,7 +69,7 @@ ARoadsterPawn::ARoadsterPawn()
 
 	Body = AddPart(TEXT("Roadster_Body"));
 	for (const TCHAR* N : { TEXT("Side_Details"), TEXT("Splitter"), TEXT("Plate"), TEXT("Plate_Text"), TEXT("Rear_Diffuser"),
-		TEXT("Interior"), TEXT("Seat_Driver"), TEXT("Screen_Bezel") })
+		TEXT("Interior"), TEXT("Seat_Driver"), TEXT("Screen_Bezel"), TEXT("Sill_Plates"), TEXT("Charge_Port"), TEXT("Winglets") })
 		StaticParts.Add(AddPart(N));
 	FrontLights = AddPart(TEXT("Front_Lights"));
 	TailLights = AddPart(TEXT("Tail_Lights"));
@@ -93,7 +95,22 @@ ARoadsterPawn::ARoadsterPawn()
 	HoodVent = AddPart(TEXT("Hood_Vent"));   VentClosed = FTransform(Pivot("Hood_Vent", 1.773, 0, 0.627));
 	BargeL = AddPart(TEXT("Barge_L"));       BargeLStowed = FTransform(Pivot("Barge_L", 0.83, 0.9506, 0.3309));
 	BargeR = AddPart(TEXT("Barge_R"));       BargeRStowed = FTransform(Pivot("Barge_R", 0.83, -0.9506, 0.3309));
-	Skirts = AddPart(TEXT("Skirts"));        SkirtsUp = FTransform(Pivot("Skirts", 0, 0, 0.112));
+	// The current Blender shell has these panels removed from the static body.
+	// Each mesh is local to its generated pivot; omitting one leaves a hole in the car.
+	WingStruts = AddPart(TEXT("Wing_Struts"));
+	for (const auto& H : RoadsterRig::Hinges)
+	{
+		if (FCStringAnsi::Strcmp(H.Name, "Hood_Vent") == 0 || FCStringAnsi::Strcmp(H.Name, "Barge_L") == 0 || FCStringAnsi::Strcmp(H.Name, "Barge_R") == 0) continue;
+		auto* Panel = AddPart(ANSI_TO_TCHAR(H.Name));
+		Panel->SetRelativeLocation(B2U(H.PX, H.PY, H.PZ));
+		AdditionalHingedParts.Add(Panel);
+	}
+	for (const char* Name : { "Skirt_Front", "Skirt_L", "Skirt_Rear", "Skirt_R" })
+	{
+		auto* Panel = AddPart(ANSI_TO_TCHAR(Name));
+		Panel->SetRelativeLocation(Pivot(Name, 0, 0, 0.232));
+		SkirtParts.Add(Panel);
+	}
 	Yoke = AddPart(TEXT("Yoke"));            YokeBase = FTransform(FRotator(-24.f, 0, 0), Pivot("Yoke", 0.62, 0.38, 0.72));
 	for (int32 k = 0; k < 4; ++k)
 	{
@@ -183,8 +200,9 @@ ARoadsterPawn::ARoadsterPawn()
 	{
 		USpotLightComponent* L = CreateDefaultSubobject<USpotLightComponent>(s ? TEXT("HeadlightR") : TEXT("HeadlightL"));
 		L->SetupAttachment(Root);
-		L->SetRelativeLocation(B2U(2.05, s ? -0.68 : 0.68, 0.56));
-		L->SetRelativeRotation(FRotator(-3.f, s ? 3.f : -3.f, 0));
+		// Candidate headlight fixtures point +X; exit lies beyond the opened cover's optical path.
+		L->SetRelativeLocation(B2U(1.946303, s ? -0.696065 : 0.696065, 0.595249));
+		L->SetRelativeRotation(FRotator(-2.f, 0, 0)); // EST beam aim; not a homologated photometric cutoff
 		L->SetIntensityUnits(ELightUnits::Candelas);
 		L->SetIntensity(9000.f);
 		L->SetAttenuationRadius(9000.f);
@@ -276,7 +294,18 @@ void ARoadsterPawn::BeginPlay()
 	CarCapture->PostProcessSettings.bOverride_AutoExposureMethod = true;
 	CarCapture->PostProcessSettings.AutoExposureMethod = EAutoExposureMethod::AEM_Manual;
 	CarCapture->PostProcessSettings.bOverride_AutoExposureBias = true;
-	CarCapture->PostProcessSettings.AutoExposureBias = -2.f;
+	CarCapture->PostProcessSettings.AutoExposureBias = 0.f;
+	// The show-only car view uses a black background, so automatic metering would clip the
+	// daylight body into a white silhouette. Use a physical daylight exposure (about EV14).
+	CarCapture->PostProcessSettings.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
+	CarCapture->PostProcessSettings.AutoExposureApplyPhysicalCameraExposure = true;
+	CarCapture->PostProcessSettings.bOverride_CameraISO = true;
+	CarCapture->PostProcessSettings.CameraISO = 100.f;
+	CarCapture->PostProcessSettings.bOverride_CameraShutterSpeed = true;
+	CarCapture->PostProcessSettings.CameraShutterSpeed = 250.f;
+	CarCapture->PostProcessSettings.bOverride_DepthOfFieldFstop = true;
+	CarCapture->PostProcessSettings.DepthOfFieldFstop = 8.f;
+	CarCapture->ShowFlags.SetDepthOfField(false);
 	TArray<UActorComponent*> Comps;
 	GetComponents(UStaticMeshComponent::StaticClass(), Comps);
 	for (UActorComponent* C : Comps)
@@ -367,6 +396,8 @@ void ARoadsterPawn::SetXRay(bool bOn)
 	if (!XRayMID) return;
 	// the shell and its trim become the ghost; everything structural inside keeps its real materials
 	TArray<UStaticMeshComponent*> Ghost = { Body, HoodVent, Wing, BargeL, BargeR, Skirts, FrontLights, TailLights };
+	for (UStaticMeshComponent* C : AdditionalHingedParts) Ghost.Add(C);
+	for (UStaticMeshComponent* C : SkirtParts) Ghost.Add(C);
 	for (UStaticMeshComponent* C : StaticParts)
 		if (C && C->GetStaticMesh() && (C->GetName().Contains(TEXT("Side_Details")) || C->GetName().Contains(TEXT("Splitter")) || C->GetName().Contains(TEXT("Plate"))))
 			Ghost.Add(C);
@@ -460,7 +491,7 @@ Roadster::TraceFn ARoadsterPawn::MakeTrace()
 		bool bHit;
 		if (r <= 1e-4) bHit = W->LineTraceSingleByObjectType(H, Start, End, Obj, Params);
 		else bHit = W->SweepSingleByObjectType(H, Start, End, FQuat::Identity, Obj, FCollisionShape::MakeSphere(r * M2CM), Params);
-		if (!bHit || H.bStartPenetrating)
+		if (!bHit)
 		{
 			if (bPlanet)
 			{
@@ -483,10 +514,13 @@ Roadster::TraceFn ARoadsterPawn::MakeTrace()
 			return Out;
 		}
 		Out.bHit = true;
+		Out.bStartPenetrating = H.bStartPenetrating;
+		Out.PenetrationDepth = H.bStartPenetrating ? H.PenetrationDepth / M2CM : 0.0;
 		Out.CenterDist = H.Distance / M2CM;
 		Out.Point = ToM(H.ImpactPoint);
 		Out.Dist = (Out.Point - s).Dot(d);
-		Out.Normal = V3(H.ImpactNormal.X, H.ImpactNormal.Y, H.ImpactNormal.Z);
+		const FVector Normal = H.bStartPenetrating ? H.Normal.GetSafeNormal() : H.ImpactNormal.GetSafeNormal();
+		Out.Normal = V3(Normal.X, Normal.Y, Normal.Z);
 		return Out;
 	};
 }
@@ -497,10 +531,15 @@ void ARoadsterPawn::StepSimulation(float DeltaSeconds)
 	const double h = 0.001;
 	Accumulator += FMath::Min(DeltaSeconds, 0.05f) * TimeScale;
 	const TraceFn Trace = MakeTrace();
-	if (const auto* PC = Cast<ARoadsterController>(GetController())) Input.bPilotStunt = PC->IsStuntActive() || PC->IsReplaying();
+	auto* PC = Cast<ARoadsterController>(GetController());
 	int32 Steps = 0;
 	while (Accumulator >= h && Steps < 60)
 	{
+		if (PC)
+		{
+			PC->ApplyPhysicsPreset(h);
+			Input.bPilotStunt = PC->IsStuntActive() || PC->IsReplaying();
+		}
 		Sim.Step(h, Input, Trace);
 		Accumulator -= h;
 		if (DebugAfterReset >= 0.0)
@@ -681,39 +720,72 @@ void ARoadsterPawn::UpdateVisuals(float DeltaSeconds)
 	{
 		const auto* Meta = RoadsterRig::FindFan(TCHAR_TO_ANSI(*FString::Printf(TEXT("Fan_%d"), i)));
 		const FVector Axis = Meta ? FVector(Meta->AX, -Meta->AY, Meta->AZ).GetSafeNormal() : FVector::ForwardVector;
-		Fans[i]->AddRelativeRotation(FQuat(Axis, FMath::DegreesToRadians(FanDeg)));
+		Fans[i]->AddRelativeRotation(FQuat(Axis, -FMath::DegreesToRadians(FanDeg)));
 	}
 
-	// wing: blend stowed -> deployed by WingAngle
+	// Generated Blender rest pivots and signed hinge angles are the single visual contract.
+	// Reflection of Blender Y reverses the handedness of every angle.
+	auto HingePose = [](const RoadsterRig::FHinge& H, float AngleDeg)
 	{
-		const float a = Sim.WingAngle;
-		FTransform T;
-		T.Blend(WingStowed, WingDeployed, FMath::Clamp(a, 0.f, 1.f));
-		// low-drag sits at a shallower angle of attack
-		T.ConcatenateRotation(FQuat(FRotator(FMath::Lerp(-6.f, 0.f, a), 0, 0)));
-		Wing->SetRelativeTransform(T);
-	}
-	// hood vent hinges at its front edge
+		return FTransform(FQuat(FVector(H.AX, -H.AY, H.AZ).GetSafeNormal(), -FMath::DegreesToRadians(AngleDeg)), B2U(H.PX, H.PY, H.PZ));
+	};
+	const bool bVent = Sim.Set.bHoodVentOpen || Sim.Set.Aero == AeroPreset::HighDownforce || (Sim.Set.Aero == AeroPreset::Auto && FMath::Abs(Sim.T.ForwardSpeed) > 30.0);
+	const bool bBarge = Sim.Set.Aero == AeroPreset::HighDownforce || Sim.Set.Aero == AeroPreset::Auto || (Sim.Set.Aero == AeroPreset::Custom && Sim.Set.bBargeDeployed);
+	const bool bLightPower = Sim.Set.bInfiniteBattery || Sim.EnergyKWh > 1e-7;
+	AutoHeadlightTimer -= DeltaSeconds;
+	if (AutoHeadlightTimer <= 0.f)
 	{
-		const float Open = Sim.T.Speed > 0 ? (Sim.Set.bHoodVentOpen || (Sim.Set.Aero == AeroPreset::Auto && FMath::Abs(Sim.T.ForwardSpeed) > 30.f) || Sim.Set.Aero == AeroPreset::HighDownforce ? 1.f : 0.f) : (Sim.Set.bHoodVentOpen ? 1.f : 0.f);
-		static float VentAngle = 0.f;
-		VentAngle = FMath::FInterpTo(VentAngle, Open * 9.f, DeltaSeconds, 4.f);
-		HoodVent->SetRelativeTransform(FTransform(FRotator(-VentAngle, 0, 0), VentClosed.GetLocation()));
+		AutoHeadlightTimer = 0.25f;
+		bAutoHeadlights = true;
+		// Auto observes actual occlusion toward the sun, so tunnels command lamps.
+		for (TActorIterator<ADirectionalLight> Sun(GetWorld()); Sun; ++Sun)
+		{
+			const auto* Light = Cast<UDirectionalLightComponent>(Sun->GetLightComponent());
+			if (!Light || !Light->IsVisible() || Light->Intensity < 3000.f) continue;
+			const FVector Start = GetActorTransform().TransformPosition(B2U(0, 0, 1.2));
+			FHitResult Hit;
+			FCollisionQueryParams Query(SCENE_QUERY_STAT(RoadsterAutomaticLamps), true, this);
+			bAutoHeadlights = GetWorld()->LineTraceSingleByChannel(Hit, Start, Start - Sun->GetActorForwardVector() * 200000.f, ECC_Visibility, Query);
+			break;
+		}
 	}
-	// barge boards swing out
+	bHeadlightsRequested = ExteriorLights == 2 || (ExteriorLights == 3 && bAutoHeadlights);
+	const float PreviousCover = HeadlightOpenFraction;
+	// EST 0.4s electric actuator; a depleted battery leaves the cover at its last position.
+	if (bLightPower && !bSimPaused) HeadlightOpenFraction = FMath::FInterpConstantTo(HeadlightOpenFraction, bHeadlightsRequested ? 1.f : 0.f, FMath::Min(DeltaSeconds, .05f) * TimeScale, 2.5f);
+	// Keep the doors latched once moving; this is an authored presentation actuator, not a crash model.
+	if (Sim.T.Speed > 1.0) bDoorsOpen = false;
+	DoorOpenFraction = FMath::FInterpConstantTo(DoorOpenFraction, bDoorsOpen ? 1.f : 0.f, DeltaSeconds, 0.65f);
+	VentOpenFraction = FMath::FInterpConstantTo(VentOpenFraction, bVent ? 1.f : 0.f, DeltaSeconds, 2.f);
+	BargeOpenFraction = FMath::FInterpConstantTo(BargeOpenFraction, bBarge ? 1.f : 0.f, DeltaSeconds, 1.8f);
+	for (UStaticMeshComponent* Panel : AdditionalHingedParts)
 	{
-		// retracted into their slots unless asked for: High Downforce, Custom on, or Auto above ~90 km/h
-		const bool bDeploy = Sim.Set.Aero == AeroPreset::LowDrag ? false
-			: Sim.Set.Aero == AeroPreset::Custom ? Sim.Set.bBargeDeployed
-			: Sim.Set.Aero == AeroPreset::HighDownforce ? true
-			: Sim.T.Speed > 25.0;
-		static float B = 0.f;
-		B = FMath::FInterpTo(B, bDeploy ? 1.f : 0.f, DeltaSeconds, 5.f);
-		BargeL->SetRelativeTransform(FTransform(FRotator(0, -25.f * B, 0), BargeLStowed.GetLocation() + FVector(10.f * B, -4.f * B, 0)));
-		BargeR->SetRelativeTransform(FTransform(FRotator(0, 25.f * B, 0), BargeRStowed.GetLocation() + FVector(10.f * B, 4.f * B, 0)));
+		const FString Name = Panel->GetName();
+		if (const auto* H = RoadsterRig::FindHinge(TCHAR_TO_ANSI(*Name)))
+		{
+			float Angle = 0.f;
+			if (Name.StartsWith(TEXT("Door"))) Angle = H->Open * DoorOpenFraction;
+			else if (Name.StartsWith(TEXT("FrontWing"))) Angle = H->Mid * Sim.FrontWingAngle;
+			else if (Name.StartsWith(TEXT("HeadlightCover"))) Angle = H->Open * HeadlightOpenFraction;
+			Panel->SetRelativeTransform(HingePose(*H, Angle));
+		}
 	}
-	// skirts drop with deployment
-	Skirts->SetRelativeLocation(SkirtsUp.GetLocation() - FVector(0, 0, 6.5f * Sim.SkirtDeploy));
+	if (const auto* H = RoadsterRig::FindHinge("Hood_Vent")) HoodVent->SetRelativeTransform(HingePose(*H, H->Open * VentOpenFraction));
+	if (const auto* H = RoadsterRig::FindHinge("Barge_L")) BargeL->SetRelativeTransform(HingePose(*H, H->Open * BargeOpenFraction));
+	if (const auto* H = RoadsterRig::FindHinge("Barge_R")) BargeR->SetRelativeTransform(HingePose(*H, H->Open * BargeOpenFraction));
+	// The wing's zero pose is its authored stowed pocket. Lift and pitch use the generated travel.
+	{
+		const float A = FMath::Clamp((float)Sim.WingAngle, 0.f, 1.f);
+		const float Deploy = FMath::Clamp(A / 0.45f, 0.f, 1.f);
+		const float Pitch = A <= 0.45f ? RoadsterRig::WingPitchLowDrag * Deploy : FMath::Lerp((float)RoadsterRig::WingPitchLowDrag, (float)RoadsterRig::WingPitchHighDownforce, (A - 0.45f) / 0.55f);
+		const FVector Pivot = B2U(RoadsterRig::WingPivot[0], RoadsterRig::WingPivot[1], RoadsterRig::WingPivot[2]);
+		const FVector Lift = B2U(RoadsterRig::WingLift[0], RoadsterRig::WingLift[1], RoadsterRig::WingLift[2]) * Deploy;
+		Wing->SetRelativeTransform(FTransform(FQuat(FVector::RightVector, FMath::DegreesToRadians(Pitch)), Pivot + Lift));
+		WingStruts->SetRelativeLocation(Pivot + Lift);
+	}
+	for (UStaticMeshComponent* Panel : SkirtParts)
+		if (const auto* P = RoadsterRig::FindPivot(TCHAR_TO_ANSI(*Panel->GetName())))
+			Panel->SetRelativeLocation(B2U(P->X, P->Y, P->Z) - FVector(0, 0, RoadsterRig::SkirtReach * 100.0 * Sim.SkirtDeploy));
 	// yoke: steer-by-wire, ~150 degrees lock to lock each way
 	Yoke->SetRelativeTransform(FTransform(YokeBase.GetRotation() * FQuat(FVector::ForwardVector, -Input.Steer * FMath::DegreesToRadians(150.f)), YokeBase.GetLocation()));
 
@@ -721,9 +793,12 @@ void ARoadsterPawn::UpdateVisuals(float DeltaSeconds)
 	const bool bBrake = Sim.T.BrakePedal > 0.05 || Sim.T.RegenKW > 60.0;
 	if (TailMID) TailMID->SetScalarParameterValue(TEXT("Intensity"), bBrake ? 220.f : 60.f);
 	BrakeGlow->SetIntensity(bBrake ? 120.f : 25.f);
-	const bool bHeadOn = ExteriorLights == 2 || ExteriorLights == 3;
+	const bool bHeadOn = bLightPower && bHeadlightsRequested && HeadlightOpenFraction >= .98f;
 	for (USpotLightComponent* L : Headlights) L->SetVisibility(bHeadOn);
-	if (HeadMID) HeadMID->SetScalarParameterValue(TEXT("Intensity"), ExteriorLights == 0 ? 0.f : 80.f);
+	const bool bDRL = bLightPower && ExteriorLights != 0;
+	if (HeadMID) HeadMID->SetScalarParameterValue(TEXT("Intensity"), bDRL ? 80.f : 0.f);
+	// EST electrical loads:15W DRLs,120W headlamps,5W while the cover actuator moves.
+	Sim.LightingPowerKW = bLightPower ? (bDRL ? .015 : 0.0) + (bHeadOn ? .120 : 0.0) + (HeadlightOpenFraction != PreviousCover ? .005 : 0.0) : 0.0;
 	CabinGlow->SetVisibility(IsInterior());
 
 	// thruster plumes
@@ -975,6 +1050,9 @@ void ARoadsterPawn::UpdateCamera(float DeltaSeconds)
 void ARoadsterPawn::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
 {
 	Camera->GetCameraView(DeltaTime, OutResult);
+	// Cockpit details sit within the engine's default 10cm near plane. A 1cm perspective
+	// near plane retains nearby trim and the yoke when the driver looks around.
+	OutResult.PerspectiveNearClipPlane = 1.0f;
 }
 
 void ARoadsterPawn::DrawScreen(UCanvas* Canvas, int32 Width, int32 Height)

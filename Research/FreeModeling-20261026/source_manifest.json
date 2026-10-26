@@ -1,0 +1,32 @@
+[
+  {
+    "name": "solidify",
+    "url": "https://docs.blender.org/manual/en/5.1/modeling/modifiers/generate/solidify.html",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "name": "shrinkwrap",
+    "url": "https://docs.blender.org/manual/en/5.1/modeling/modifiers/deform/shrinkwrap.html",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "name": "data_transfer",
+    "url": "https://docs.blender.org/manual/en/5.1/modeling/modifiers/modify/data_transfer.html",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "name": "principled",
+    "url": "https://docs.blender.org/manual/en/5.1/render/shader_nodes/shader/principled.html",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "name": "normals",
+    "url": "https://docs.blender.org/manual/en/5.1/modeling/meshes/editing/mesh/normals.html",
+    "error": "HTTP Error 403: Forbidden"
+  },
+  {
+    "name": "cgmasters_free_pbr",
+    "url": "https://cgmasters.com/principled-node-and-physically-based-rendering/",
+    "error": "HTTP Error 406: Not Acceptable"
+  }
+]
