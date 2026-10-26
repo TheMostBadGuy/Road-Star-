@@ -1,0 +1,111 @@
+PASS | keys-launch finite | 0
+PASS | keys-launch all wheels retain contact | 4
+PASS | keys-launch physical tire force envelope | 0.898689902933
+PASS | analog-launch finite | 0
+PASS | analog-launch all wheels retain contact | 4
+PASS | analog-launch physical tire force envelope | 0.974268492371
+PASS | keys-pulse10 finite | 0
+PASS | keys-pulse10 all wheels retain contact | 4
+PASS | keys-pulse10 physical tire force envelope | 0.921866940838
+PASS | keys-pulse20 finite | 0
+PASS | keys-pulse20 all wheels retain contact | 4
+PASS | keys-pulse20 physical tire force envelope | 0.994701878321
+PASS | keys-pulse35 finite | 0
+PASS | keys-pulse35 all wheels retain contact | 4
+PASS | keys-pulse35 physical tire force envelope | 0.91795431553
+PASS | keys-pulse60 finite | 0
+PASS | keys-pulse60 all wheels retain contact | 4
+PASS | keys-pulse60 physical tire force envelope | 0.998946918968
+PASS | keys-slalom20 finite | 0
+PASS | keys-slalom20 all wheels retain contact | 4
+PASS | keys-slalom20 physical tire force envelope | 1.00354163987
+PASS | analog-pulse20 finite | 0
+PASS | analog-pulse20 all wheels retain contact | 4
+PASS | analog-pulse20 physical tire force envelope | 0.429279127826
+PASS | analog-slalom35 finite | 0
+PASS | analog-slalom35 all wheels retain contact | 4
+PASS | analog-slalom35 physical tire force envelope | 0.694068564643
+PASS | brake35 finite | 0
+PASS | brake35 all wheels retain contact | 4
+PASS | brake35 physical tire force envelope | 1.01117394967
+PASS | reverse-right finite | 0
+PASS | reverse-right all wheels retain contact | 4
+PASS | reverse-right physical tire force envelope | 0.99662585993
+PASS | reverse-left finite | 0
+PASS | reverse-left all wheels retain contact | 4
+PASS | reverse-left physical tire force envelope | 0.998731595107
+PASS | lateral-right-ESC finite | 0
+PASS | lateral-right-ESC all wheels retain contact | 4
+PASS | lateral-right-ESC physical tire force envelope | 1.00089640613
+PASS | lateral-left-ESC finite | 0
+PASS | lateral-left-ESC all wheels retain contact | 4
+PASS | lateral-left-ESC physical tire force envelope | 1.00089578638
+PASS | lateral-right-raw finite | 0
+PASS | lateral-right-raw all wheels retain contact | 4
+PASS | lateral-right-raw physical tire force envelope | 1.00100964791
+PASS | lateral-left-raw finite | 0
+PASS | lateral-left-raw all wheels retain contact | 4
+PASS | lateral-left-raw physical tire force envelope | 1.00100964791
+PASS | yaw-right-ESC finite | 0
+PASS | yaw-right-ESC all wheels retain contact | 4
+PASS | yaw-right-ESC physical tire force envelope | 0.514945246398
+PASS | yaw-left-ESC finite | 0
+PASS | yaw-left-ESC all wheels retain contact | 4
+PASS | yaw-left-ESC physical tire force envelope | 0.514945246398
+PASS | keys-slalom20-fps20 finite | 0
+PASS | keys-slalom20-fps20 all wheels retain contact | 4
+PASS | keys-slalom20-fps20 physical tire force envelope | 1.00363435153
+PASS | keys-slalom20-fps120 finite | 0
+PASS | keys-slalom20-fps120 all wheels retain contact | 4
+PASS | keys-slalom20-fps120 physical tire force envelope | 1.00354242569
+PASS | analog-slalom35-fps20 finite | 0
+PASS | analog-slalom35-fps20 all wheels retain contact | 4
+PASS | analog-slalom35-fps20 physical tire force envelope | 0.695391533128
+PASS | analog-slalom35-fps120 finite | 0
+PASS | analog-slalom35-fps120 all wheels retain contact | 4
+PASS | analog-slalom35-fps120 physical tire force envelope | 0.694033162126
+PASS | analog-full-pulse35 finite | 0
+PASS | analog-full-pulse35 all wheels retain contact | 4
+PASS | analog-full-pulse35 physical tire force envelope | 0.794482686718
+PASS | brake-steer35 finite | 0
+PASS | brake-steer35 all wheels retain contact | 4
+PASS | brake-steer35 physical tire force envelope | 1.0109361346
+PASS | boost-steer20 finite | 0
+PASS | boost-steer20 all wheels retain contact | 4
+PASS | boost-steer20 physical tire force envelope | 1.00192096026
+PASS | keys-pulse20 controlled body sideslip | 2.50581284081
+PASS | keys-pulse20 no sustained deep rear-tire slide | 5.37838467259
+PASS | keys-pulse20 yaw settles after steering release | 2.11794859012E-07
+PASS | keys-pulse35 controlled body sideslip | 2.08063747361
+PASS | keys-pulse35 no sustained deep rear-tire slide | 3.48572253624
+PASS | keys-pulse35 yaw settles after steering release | 1.64244881115E-06
+PASS | keys-pulse60 controlled body sideslip | 5.12697907684
+PASS | keys-pulse60 no sustained deep rear-tire slide | 5.77034355615
+PASS | keys-pulse60 yaw settles after steering release | 1.02404560178E-05
+PASS | keys-slalom20 controlled body sideslip | 5.72119446643
+PASS | keys-slalom20 no sustained deep rear-tire slide | 7.38274967991
+PASS | keys-slalom20 yaw settles after steering release | 3.41342065613E-06
+PASS | keys-slalom20-fps20 controlled body sideslip | 5.69271829466
+PASS | keys-slalom20-fps20 no sustained deep rear-tire slide | 7.27587311746
+PASS | keys-slalom20-fps20 yaw settles after steering release | 3.32828197604E-06
+PASS | keys-slalom20-fps120 controlled body sideslip | 5.64841998432
+PASS | keys-slalom20-fps120 no sustained deep rear-tire slide | 7.2938059143
+PASS | keys-slalom20-fps120 yaw settles after steering release | 3.40339653653E-06
+PASS | analog-full-pulse35 controlled body sideslip | 1.48054964692
+PASS | analog-full-pulse35 no sustained deep rear-tire slide | 2.38385537159
+PASS | analog-full-pulse35 yaw settles after steering release | 2.53351783714E-06
+PASS | boost-steer20 controlled body sideslip | 6.37014090135
+PASS | boost-steer20 no sustained deep rear-tire slide | 6.97216167781
+PASS | boost-steer20 yaw settles after steering release | 5.69682387244E-06
+PASS | brake-steer35 controlled body sideslip | 6.85387137073
+PASS | brake-steer35 no sustained deep rear-tire slide | 10.0680351239
+PASS | brake-steer35 yaw settles after steering release | 4.05912981914E-08
+PASS | keys-launch symmetric straight path | -1.52907679716E-14
+PASS | keys-launch bounded motor slip under TCS | 0.0552068188235
+PASS | analog-launch symmetric straight path | -5.09812566863E-16
+PASS | analog-launch bounded motor slip under TCS | 0.0606730703159
+PASS | keyboard slalom20-120fps sideslip spread below1degree | 0.07277448211
+PASS | brake and Hold stop without residual crawl | 8.59660065733E-05
+PASS | reverse-right low-speed CG angle is not mistaken for tire sliding | 0.862485703215
+PASS | reverse-left low-speed CG angle is not mistaken for tire sliding | 0.870424935109
+PASS | Raw mode is a genuine driver opt-out | 68.5992881739

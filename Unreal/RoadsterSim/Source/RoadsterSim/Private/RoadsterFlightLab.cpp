@@ -126,12 +126,13 @@ void URoadsterInterface::PageSimulatorLab(float X, float Y, float W, float H)
 	FitText(UI, TEXT("Configure the simulation: estimated hardware, finite propellant and an idealized spherical Earth model."),
 		X, Y + 54, W, 22);
 	SimulatorWorkspace = UI.Segmented(X, Y + 82, W, 64, TEXT("Workspace"),
-		{ TEXT("Gas Fill"), TEXT("Flight / Orbit"), TEXT("Controls") }, FMath::Clamp(SimulatorWorkspace, 0, 2), 250);
+		{ TEXT("Gas Fill"), TEXT("Flight / Orbit"), TEXT("Controls"), TEXT("Handling") }, FMath::Clamp(SimulatorWorkspace, 0, 3), 250);
 	const float CY = Y + 164, CH = H - 164;
 	switch (SimulatorWorkspace)
 	{
 	case 1: LabFlightPage(X, CY, W, CH); break;
 	case 2: LabControlsPage(X, CY, W, CH); break;
+	case 3: LabHandlingPage(X, CY, W, CH); break;
 	default: LabGasPage(X, CY, W, CH); break;
 	}
 }
@@ -280,6 +281,40 @@ void URoadsterInterface::LabFlightPage(float X, float Y, float W, float H)
 	}
 	else FitText(UI, TEXT("Enable Roadstar Earth for orbital classification."), RX + 24, Y + 365, RW - 48, 24, Amber);
 	FitText(UI, TEXT("No Earth rotation, terrain or other gravitating bodies."), RX + 24, Y + 582, RW - 48, 20);
+}
+
+void URoadsterInterface::LabHandlingPage(float X, float Y, float W, float H)
+{
+	auto& Set = Pawn->Sim.Set;
+	const auto& T = Pawn->Sim.T;
+	const float LW = W * .56f, RX = X + LW + 26.f, RW = W - LW - 26.f;
+	UI.Panel(X, Y, LW, H);
+	UI.Text(TEXT("Drive with confidence"), X + 24, Y + 38, 31, Red, EAlign::Left, true);
+	FitText(UI, TEXT("Steering assistance keeps large inputs within the tires' estimated grip."), X + 24, Y + 90, LW - 48, 24);
+	Set.bAssistedSteering = UI.Segmented(X + 24, Y + 136, LW - 48, 76, TEXT("Steering"),
+		{ TEXT("Assisted"), TEXT("Raw") }, Set.bAssistedSteering ? 0 : 1, 240) == 0;
+	float Margin = static_cast<float>(1.0 - Set.SteeringGripHeadroom);
+	UI.Slider(X + 24, Y + 230, LW - 48, 85, TEXT("Grip reserve"), Margin, 0.f, .35f,
+		FString::Printf(TEXT("%.0f%%"), Margin * 100.f), 250);
+	Set.SteeringGripHeadroom = 1.0 - Margin;
+	FitText(UI, TEXT("More reserve gives gentler high-speed turns. Parking lock and countersteer remain available."), X + 24, Y + 355, LW - 48, 22);
+	FitText(UI, TEXT("Traction and stability control remain separately adjustable in Dynamics."), X + 24, Y + 420, LW - 48, 22);
+	if (UI.Button(X + 24, Y + 490, LW - 48, 70, TEXT("Save driving preferences"), false, 25))
+		if (auto* Controller = Cast<ARoadsterController>(Pawn->GetController())) { Controller->SaveControlSettings(); LabControlStatus = TEXT("Driving preferences saved."); }
+	FitText(UI, LabControlStatus, X + 24, Y + 590, LW - 48, 22, Green);
+	UI.Panel(RX, Y, RW, H);
+	UI.Text(TEXT("Live steering / grip"), RX + 24, Y + 38, 29, Red, EAlign::Left, true);
+	const FString Values[] = {
+		FString::Printf(TEXT("Requested road-wheel angle: %.1f deg"), T.SteeringRequestRad * 180.0 / Roadster::kPi),
+		FString::Printf(TEXT("Applied road-wheel angle: %.1f deg"), T.SteeringAppliedRad * 180.0 / Roadster::kPi),
+		FString::Printf(TEXT("Estimated turning grip: %.2f g"), T.LateralGripEstimateMps2 / Roadster::kG),
+		FString::Printf(TEXT("Speed: %.0f km/h"), T.Speed * 3.6),
+		FString::Printf(TEXT("Traction control: %s"), Set.bTCS ? TEXT("ON") : TEXT("OFF")),
+		FString::Printf(TEXT("Stability control: %s"), Set.bESC ? TEXT("ON") : TEXT("OFF"))
+	};
+	for (int32 i = 0; i < UE_ARRAY_COUNT(Values); ++i) FitText(UI, Values[i], RX + 24, Y + 110 + i * 57, RW - 48, 24, Red);
+	FitText(UI, T.bSteeringLimited ? TEXT("Steering is preserving grip") : TEXT("Full requested steering available"), RX + 24, Y + 492, RW - 48, 24, T.bSteeringLimited ? Amber : Green, true);
+	FitText(UI, TEXT("Grip remains finite. Braking, cold tires, boost and surface conditions affect every turn."), RX + 24, Y + 575, RW - 48, 21);
 }
 
 void URoadsterInterface::LabControlsPage(float X, float Y, float W, float H)

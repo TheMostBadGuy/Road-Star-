@@ -4,6 +4,7 @@
 #include "GameFramework/PlayerController.h"
 #include "RoadsterGamepad.h"
 #include "RoadsterPhysics.h"
+#include "Async/Future.h"
 #include "RoadsterController.generated.h"
 
 class ARoadsterPawn;
@@ -72,6 +73,20 @@ private:
 	float MeasuredFrameTime = 0.f;
 	int32 MeasuredFrames = 0;
 	TArray<float> ReviewFrameTimes;
+	struct FReviewFrame
+	{
+		double WallSeconds = 0;
+		float WallMs = 0, EngineMs = 0, GameMs = 0, RenderMs = 0, GPUMs = 0;
+		bool bFocused = false, bAfterScreenshot = false;
+	};
+	TArray<FReviewFrame> ReviewFrames;
+	double ReviewLastWallSeconds = 0, ReviewConfiguredWallSeconds = 0;
+	double ReviewCompileWallSeconds = 0, ReviewMeasuredWallSeconds = 0;
+	bool bReviewPreviousScreenshot = false;
+	FDelegateHandle AsyncScreenshotHandle;
+	TArray<TFuture<bool>> PendingScreenshotWrites;
+	void UpdateScreenshotBinding();
+	void CaptureScreenshotAsync(int32 Width, int32 Height, const TArray<FColor>& Pixels);
 	FString ShotDirectory;
 	float TelemetryTimer = 0.f;
 	void AutopilotInput(float Dt);

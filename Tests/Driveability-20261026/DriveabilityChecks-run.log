@@ -1,0 +1,29 @@
+PASS | assisted steering has an explicit default and .85 headroom | 0
+PASS | stock peak friction coefficient is unchanged | 1.45
+PASS | parking retains full physical rack request | 32
+PASS | right turn Ackermann gives inside right wheel the larger positive angle | 35.3481913923867
+PASS | high speed full request is limited before tire saturation | 2.74871023013753
+PASS | unperturbed rack curvature obeys independent axle grip budget | 1
+PASS | Raw preserves the unrestricted speed-sensitive rack request | 10.0699300699301
+PASS | steering guard remains independent of ESC and TCS | 2.74871023013753
+PASS | user headroom changes permitted request monotonically | 1.99840819812391
+PASS | nonfinite headroom falls back to finite default steering | 0.047974043699151
+PASS | nonfinite headroom falls back to finite default steering | 0.047974043699151
+PASS | nonfinite headroom falls back to finite default steering | 0.047974043699151
+PASS | driver countersteer retains requested direction and extra catch authority | -9.26851198179451
+PASS | driver countersteer retains requested direction and extra catch authority | 9.26851198179451
+PASS | forward and reverse steering produce correct mirrored yaw | -0.432421306817587
+PASS | forward and reverse steering produce correct mirrored yaw | 0.432421306817587
+PASS | forward and reverse steering produce correct mirrored yaw | 0.246318257614614
+PASS | forward and reverse steering produce correct mirrored yaw | -0.246318257614614
+STATIC Performance frontFraction=0.419856079 expected=0.420000000 pitch=0.061342170deg bodyZ=0.000000046
+PASS | settled wheel loads follow rearward-CG static moment balance | 0.419856078807482
+PASS | correct preload keeps settled body nearly level | 0.00107062262769787
+STATIC Thrust frontFraction=0.419907892 expected=0.420000000 pitch=0.039249160deg bodyZ=0.000000019
+PASS | settled wheel loads follow rearward-CG static moment balance | 0.419907892341086
+PASS | correct preload keeps settled body nearly level | 0.000685027012399368
+STATIC Rocket frontFraction=0.420018210 expected=0.420000000 pitch=-0.007756029deg bodyZ=0.000000001
+PASS | settled wheel loads follow rearward-CG static moment balance | 0.420018210217947
+PASS | correct preload keeps settled body nearly level | -0.000135368250147419
+PASS | grip guard follows existing tire temperature and wear factors | 0.849948643692313
+RESULT 25/25 passed

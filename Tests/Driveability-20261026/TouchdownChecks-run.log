@@ -1,0 +1,9 @@
+PASS | first floor touchdown custom=0 preset=Kickflip t=5.272s up=0.999876760 wheels=2 body=0 preVz=-17.149274354 rotationBeforeTouch=365.754086962deg minUpBeforeTouch=-0.997809371 finalUp=0.999983634 finalWheels=4
+PASS | first floor touchdown custom=0 preset=Barrel roll t=5.092s up=0.999993702 wheels=2 body=0 preVz=-18.582040668 rotationBeforeTouch=396.048142394deg minUpBeforeTouch=-0.992318856 finalUp=0.999983243 finalWheels=4
+PASS | first floor touchdown custom=0 preset=Backflip t=4.990s up=0.999994000 wheels=2 body=0 preVz=-18.653294875 rotationBeforeTouch=375.187271473deg minUpBeforeTouch=-0.999998211 finalUp=0.999983342 finalWheels=4
+PASS | first floor touchdown custom=0 preset=Hop t=2.317s up=0.999849507 wheels=2 body=0 preVz=-9.218965414 rotationBeforeTouch=0.000000000deg minUpBeforeTouch=0.999695976 finalUp=0.999981930 finalWheels=4
+PASS | first floor touchdown custom=1 preset=Kickflip t=5.271s up=0.999878617 wheels=2 body=0 preVz=-17.096329169 rotationBeforeTouch=365.747483038deg minUpBeforeTouch=-0.997799803 finalUp=0.999999853 finalWheels=4
+PASS | first floor touchdown custom=1 preset=Barrel roll t=5.094s up=0.999993930 wheels=2 body=0 preVz=-18.494219557 rotationBeforeTouch=396.075626999deg minUpBeforeTouch=-0.992307437 finalUp=0.999999882 finalWheels=4
+PASS | first floor touchdown custom=1 preset=Backflip t=4.989s up=0.999994201 wheels=4 body=0 preVz=-18.607133803 rotationBeforeTouch=374.916485212deg minUpBeforeTouch=-0.999997462 finalUp=0.999999877 finalWheels=4
+PASS | first floor touchdown custom=1 preset=Hop t=2.317s up=0.999849650 wheels=2 body=0 preVz=-9.168977285 rotationBeforeTouch=0.000000000deg minUpBeforeTouch=0.999695966 finalUp=0.999999968 finalWheels=4
+RESULT 8/8 passed

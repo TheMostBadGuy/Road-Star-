@@ -219,24 +219,54 @@ void ARoadsterHUD::DrawMenu(ARoadsterController* PC, ARoadsterPawn* P)
 	}
 	else if (MenuPage == 2)
 	{
-		Quality = UI.Segmented(X - 200, Y, W + 400, H, TEXT("Quality"), { TEXT("Low"), TEXT("Medium"), TEXT("High"), TEXT("Epic") }, Quality, 200);
-		Y += 90;
-		if (UI.Button(X, Y, W, H, TEXT("Apply"), false, 28))
+		UGameUserSettings* GS = UGameUserSettings::GetGameUserSettings();
+		const int32 Caps[] = { 0, 60, 90, 120, 144, 165, 240 };
+		if (GS && !bGraphicsInitialized)
 		{
-			if (UGameUserSettings* GS = UGameUserSettings::GetGameUserSettings())
+			bGraphicsInitialized = true;
+			Quality = FMath::Clamp(GS->GetOverallScalabilityLevel(), 0, 3);
+			GraphicsShadows = GS->GetShadowQuality(); GraphicsReflections = GS->GetReflectionQuality();
+			GraphicsOriginalResolution = GS->GetScreenResolution();
+			GraphicsWindowMode = GS->GetFullscreenMode() == EWindowMode::Windowed ? 0 : 1;
+			GraphicsVSync = GS->IsVSyncEnabled() ? 1 : 0;
+			float Normalized = 0, Minimum = 0, Maximum = 0;
+			GS->GetResolutionScaleInformationEx(Normalized, GraphicsResolutionScale, Minimum, Maximum);
+			GraphicsFrameLimit = 0;
+			for (int32 i = 1; i < UE_ARRAY_COUNT(Caps); ++i)
+				if (FMath::IsNearlyEqual(GS->GetFrameRateLimit(), float(Caps[i]), 1.f)) GraphicsFrameLimit = i;
+		}
+		const float GX = VW * .5f - 620.f, GW = 1240.f, GH = 60.f, Gap = 72.f;
+		const TArray<FString> Levels = { TEXT("Low"), TEXT("Medium"), TEXT("High"), TEXT("Epic") };
+		const int32 OldQuality = Quality;
+		Quality = UI.Segmented(GX, Y, GW, GH, TEXT("Quality preset"), Levels, Quality, 260);
+		if (Quality != OldQuality) GraphicsShadows = GraphicsReflections = Quality;
+		Y += Gap;
+		GraphicsResolution = UI.Segmented(GX, Y, GW, GH, TEXT("Window output"), { FString::Printf(TEXT("%dx%d"), GraphicsOriginalResolution.X, GraphicsOriginalResolution.Y), TEXT("1280x720"), TEXT("1920x1080"), TEXT("2560x1440"), TEXT("3840x2160") }, GraphicsResolution, 260); Y += Gap;
+		GraphicsWindowMode = UI.Segmented(GX, Y, GW, GH, TEXT("Display mode"), { TEXT("Windowed"), TEXT("Borderless desktop") }, GraphicsWindowMode, 260); Y += Gap;
+		UI.Slider(GX, Y, GW, GH, TEXT("TSR render scale"), GraphicsResolutionScale, 50.f, 100.f, FString::Printf(TEXT("%.0f%%"), GraphicsResolutionScale), 260); Y += Gap;
+		GraphicsFrameLimit = UI.Segmented(GX, Y, GW, GH, TEXT("Frame limit"), { TEXT("Uncapped"), TEXT("60"), TEXT("90"), TEXT("120"), TEXT("144"), TEXT("165"), TEXT("240") }, GraphicsFrameLimit, 260); Y += Gap;
+		GraphicsVSync = UI.Segmented(GX, Y, GW, GH, TEXT("VSync"), { TEXT("Off"), TEXT("On") }, GraphicsVSync, 260); Y += Gap;
+		GraphicsShadows = UI.Segmented(GX, Y, GW, GH, TEXT("Shadows"), Levels, GraphicsShadows, 260); Y += Gap;
+		GraphicsReflections = UI.Segmented(GX, Y, GW, GH, TEXT("Reflections"), Levels, GraphicsReflections, 260); Y += Gap;
+		if (UI.Button(X, Y, W, GH, TEXT("Apply and save"), false, 28))
+		{
+			if (GS)
 			{
+				const FIntPoint Outputs[] = { GraphicsOriginalResolution, FIntPoint(1280, 720), FIntPoint(1920, 1080), FIntPoint(2560, 1440), FIntPoint(3840, 2160) };
 				GS->SetOverallScalabilityLevel(Quality);
+				GS->SetShadowQuality(GraphicsShadows); GS->SetReflectionQuality(GraphicsReflections);
+				GS->SetResolutionScaleValueEx(GraphicsResolutionScale);
+				GS->SetScreenResolution(Outputs[FMath::Clamp(GraphicsResolution, 0, 4)]);
+				GS->SetFullscreenMode(GraphicsWindowMode == 0 ? EWindowMode::Windowed : EWindowMode::WindowedFullscreen);
+				GS->SetFrameRateLimit(float(Caps[FMath::Clamp(GraphicsFrameLimit, 0, 6)]));
+				GS->SetVSyncEnabled(GraphicsVSync != 0);
 				GS->ApplySettings(false);
+				GS->ConfirmVideoMode(); GS->SaveSettings();
+				PC->ShowToast(TEXT("Graphics settings saved"));
 			}
 		}
-		Y += 90;
-		if (UI.Button(X, Y, W, H, TEXT("Toggle fullscreen"), false, 28))
-			if (UGameUserSettings* GS = UGameUserSettings::GetGameUserSettings())
-			{
-				GS->SetFullscreenMode(GS->GetFullscreenMode() == EWindowMode::Windowed ? EWindowMode::WindowedFullscreen : EWindowMode::Windowed);
-				GS->ApplySettings(false);
-			}
-		if (UI.Button(X, 1080, W, 70, TEXT("Back"), false, 26)) MenuPage = 0;
+		UI.Text(TEXT("Borderless uses desktop resolution. Lower TSR scale preserves the output size."), VW * .5f, Y + 86, 21, Grey, EAlign::Center);
+		if (UI.Button(X, 1080, W, 70, TEXT("Back"), false, 26)) { bGraphicsInitialized = false; MenuPage = 0; }
 	}
 	else
 	{

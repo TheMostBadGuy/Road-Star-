@@ -78,3 +78,28 @@ LOCK UBT Realism 2026-10-26 03:21
 UNLOCK UBT Realism 2026-10-26 03:21
 LOCK UnrealEditor Realism 2026-10-26 03:21 (checks + review captures)
 UNLOCK UnrealEditor Realism 2026-10-26 03:24
+LOCK RoadsterPawn.cpp CodexCamera 2026-10-26 14:35:38 -04:00 (CycleCamera/UpdateCamera and file-local camera helpers only; Root owns Tick/Earth)
+LOCK RoadsterPawn.h CodexCamera 2026-10-26 14:35:38 -04:00 (camera helper/anchor state only)
+LOCK RoadsterController.cpp CodexCamera 2026-10-26 14:35:38 -04:00 (C/V camera selection only; no drive inputs)
+LOCK RoadsterPhysics.h CodexDriveability 2026-10-26 14:39:19 -04:00
+UNLOCK RoadsterPhysics.h CodexDriveability 2026-10-26 14:39:19 -04:00
+UNLOCK RoadsterPawn.cpp CodexCamera 2026-10-26 15:08:18 -04:00 (camera source-ready; portable213/213; Root builds UE)
+UNLOCK RoadsterPawn.h CodexCamera 2026-10-26 15:08:18 -04:00
+UNLOCK RoadsterController.cpp CodexCamera 2026-10-26 15:08:18 -04:00 (camera line only)
+LOCK UBT CodexBuild 2026-10-26 18:48:52 -04:00 (combined Driving/Camera/PlanetX/Performance Editor then Game; source owners frozen)
+LOCK RoadsterHUD.cpp CodexPerformance 2026-10-26 18:48:55 -04:00 (Root-delegated graphics branch complete; source frozen)
+UNLOCK RoadsterHUD.cpp CodexPerformance 2026-10-26 18:48:55 -04:00
+LOCK RoadsterPawn.cpp CodexPerformance 2026-10-26 18:48:55 -04:00 (Root-delegated RT/capture/profiling blocks complete; source frozen)
+UNLOCK RoadsterPawn.cpp CodexPerformance 2026-10-26 18:48:55 -04:00
+LOCK RoadsterPawn.h CodexPerformance 2026-10-26 18:48:55 -04:00 (one preview initialization flag complete)
+UNLOCK RoadsterPawn.h CodexPerformance 2026-10-26 18:48:55 -04:00
+UNLOCK UBT CodexBuild 2026-10-26 18:52:40 -04:00 (combined Editor+Game PASS; no engine launched)
+LOCK UnrealEditor CodexPerformance 2026-10-26 18:53:41 -04:00 (Root released exclusive slot; six case A/B1920x1080Epic100%25s)
+UNLOCK UnrealEditor CodexPerformance 2026-10-26 19:04:47 -04:00 (sixAB+driving/PNG+two real-window runs complete; no engine/recorder remains)
+LOCK UnrealEditor CodexRoot 2026-10-26T19:06:25.4363101-04:00 (Earth material and verified road assets)
+LOCK RoadsterController.cpp CodexPerformance 2026-10-26 19:06:48 -04:00 (Root approved async PNG encoding/writing only)
+LOCK RoadsterController.h CodexPerformance 2026-10-26 19:06:48 -04:00 (screenshot delegate/futures metadata only)
+LOCK RoadsterSim.Build.cs CodexPerformance 2026-10-26 19:06:48 -04:00 (one private ImageWriteQueue dependency)
+UNLOCK RoadsterController.cpp CodexPerformance 2026-10-26 19:07:28 -04:00 (asyncPNGsource-ready; awaitRootUBTrelease)
+UNLOCK RoadsterController.h CodexPerformance 2026-10-26 19:07:28 -04:00
+UNLOCK RoadsterSim.Build.cs CodexPerformance 2026-10-26 19:07:28 -04:00

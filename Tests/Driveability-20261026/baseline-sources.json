@@ -1,0 +1,21 @@
+{
+  "CapturedAt": "2026-10-26T14:27:30.9803239-04:00",
+  "Head": "935bbac482b4077121013f9e05d5ea42e37d86fd",
+  "Sources": [
+    {
+      "Path": "E:\\TeslaRoadsterSim\\Unreal\\RoadsterSim\\Source\\RoadsterSim\\Public\\RoadsterPhysics.h",
+      "LastWriteTimeUtc": "2026-10-26T07:14:39.0363629Z",
+      "SHA256": "0AE3C17B8D46A510A7FEFDBDFEC25B87037BC75C0C40619D6C93393248D7E13E"
+    },
+    {
+      "Path": "E:\\TeslaRoadsterSim\\Unreal\\RoadsterSim\\Source\\RoadsterSim\\Public\\RoadsterControlMath.h",
+      "LastWriteTimeUtc": "2026-10-26T06:12:23.3100170Z",
+      "SHA256": "92E78448F844E0BE23B552A4639CF92422776392CC28CB323F8E024C6CA604B7"
+    },
+    {
+      "Path": "E:\\TeslaRoadsterSim\\Unreal\\RoadsterSim\\Source\\RoadsterSim\\Private\\RoadsterController.cpp",
+      "LastWriteTimeUtc": "2026-10-26T06:41:59.0893488Z",
+      "SHA256": "E15B0C3A042123D106BA408725E4BCB3092C2F70E84DCD62DECFB9A2B0C2942E"
+    }
+  ]
+}

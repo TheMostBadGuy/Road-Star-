@@ -309,6 +309,8 @@ namespace Roadster
 		int AeroBalance = 1;               // -3..+3, front% = 50 - 2n
 		int BrakeBalance = -1;             // -3..+3, front% = 60 - 2n
 		bool bESC = true;
+		bool bAssistedSteering = true;    // EST rack request guard; Raw keeps the driver's unrestricted steering request
+		double SteeringGripHeadroom = 0.85; // 0.5..1, fraction of estimated axle lateral authority; does not change tire mu
 		bool bTCS = true;
 		double RegenLevel = 1.0;
 		StoppingMode Stopping = StoppingMode::Hold;   // Tesla stopping modes; Hold is the factory default
@@ -385,6 +387,8 @@ namespace Roadster
 		double SOC = 1, BatteryKWh = 120, RangeKm = 0, OdometerKm = 0;
 		double MotorRPM = 0, MotorTempC = 40, BatteryTempC = 35;
 		double RearTorque = 0;
+		double SteeringRequestRad = 0, SteeringAppliedRad = 0, SteeringGripLimitRad = 0, LateralGripEstimateMps2 = 0;
+		bool bSteeringLimited = false;
 		double HeavePreloadN = 0;
 		double UpDotWorld = 1;
 		int WheelsInContact = 0;
@@ -562,7 +566,7 @@ namespace Roadster
 			{
 				const bool front = Wheels[i].bFront;
 				const double k = front ? S.SpringRateFront : S.SpringRateRear;
-				const double frontShare = 0.5 - S.CGForward / S.Wheelbase;
+				const double frontShare = 0.5 + S.CGForward / S.Wheelbase;
 				const double corner = (front ? frontShare : 1.0 - frontShare) * (S.DryMassKg + S.TrimExtraMassKg) * kG * 0.5;
 				springAtStatic += std::max(0.0, corner - k * S.StaticCompression) + k * S.StaticCompression * (1.0 + (S.ProgressiveRate - 1.0) * S.StaticCompression / S.SuspensionTravel);
 			}
@@ -641,7 +645,36 @@ namespace Roadster
 
 			// ---- steer-by-wire: speed-sensitive ratio and Ackermann
 			const double steerLimit = S.MaxSteerDeg * kPi / 180.0 / (1.0 + std::pow(std::fabs(vFwd) / 30.0, 2.0) * 1.6);
-			const double steer = Clamp(in.Steer, -1, 1) * std::max(steerLimit, 2.5 * kPi / 180.0);
+			const double rawLock = std::max(steerLimit, 2.5 * kPi / 180.0);
+			double steer = Clamp(in.Steer, -1, 1) * rawLock;
+			T.SteeringRequestRad = steer; T.SteeringGripLimitRad = rawLock;
+			T.LateralGripEstimateMps2 = 0; T.bSteeringLimited = false;
+			if (Set.bAssistedSteering && std::fabs(vFwd) > 1.0)
+			{
+				// EST steer-by-wire request guard. The axle capacities are the current physical
+				// mu*load estimates, including temperature, pressure, wear and aero/fan load.
+				// Limit rack demand rather than adding grip or changing the body's velocity.
+				double frontGrip = 0, rearGrip = 0; int grounded = 0;
+				for (const WheelState& w : Wheels) if (w.bContact && w.Load > 0)
+				{
+					const double capacity = S.PeakMu * std::max(0.0, w.GripFactor) * w.Load;
+					(w.bFront ? frontGrip : rearGrip) += capacity; ++grounded;
+				}
+				if (grounded >= 3 && frontGrip > 1 && rearGrip > 1)
+				{
+					const double frontShare = Clamp(0.5 + S.CGForward / S.Wheelbase, 0.1, 0.9);
+					const double headroom = std::isfinite(Set.SteeringGripHeadroom) ? Clamp(Set.SteeringGripHeadroom, 0.5, 1.0) : 0.85;
+					const double lateral = headroom * std::min(frontGrip / (mass * frontShare), rearGrip / (mass * (1.0 - frontShare)));
+					double rackLimit = std::atan(lateral * S.Wheelbase / (vFwd * vFwd));
+					const double slip = std::atan2(velBody.y, std::max(1.0, std::fabs(vFwd)));
+					if (steer * slip > 0) rackLimit += std::fabs(slip); // keep the driver's sideslip catch/countersteer authority
+					rackLimit = std::min(rawLock, rackLimit);
+					steer = Clamp(steer, -rackLimit, rackLimit);
+					T.SteeringGripLimitRad = rackLimit; T.LateralGripEstimateMps2 = lateral;
+					T.bSteeringLimited = std::fabs(steer - T.SteeringRequestRad) > 1e-7;
+				}
+			}
+			T.SteeringAppliedRad = steer;
 			{
 				const double L = S.Wheelbase, t = S.TrackFront;
 				double inner = steer, outer = steer;
@@ -1127,7 +1160,7 @@ namespace Roadster
 					++contacts;
 					const double c = compression[i];
 					const double prog = 1.0 + (S.ProgressiveRate - 1.0) * Clamp(c / S.SuspensionTravel, 0, 1);
-					const double frontShare = 0.5 - S.CGForward / S.Wheelbase;
+					const double frontShare = 0.5 + S.CGForward / S.Wheelbase;
 					const double staticCorner = (front ? frontShare : 1.0 - frontShare) * (S.DryMassKg + S.TrimExtraMassKg) * kG * 0.5;
 					const double preload = std::max(0.0, staticCorner - k * S.StaticCompression) + HeavePreload;
 					const double fs = k * c * prog + preload;

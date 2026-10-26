@@ -12,8 +12,13 @@ public class RoadsterSim : ModuleRules
 			"Core", "CoreUObject", "Engine", "ApplicationCore", "InputCore", "EnhancedInput",
 			"ProceduralMeshComponent", "Slate", "SlateCore", "UMG",
 			"Json", "JsonUtilities", "AudioMixer", "SignalProcessing", "Niagara",
-			"RenderCore", "RHI"
+			"RenderCore", "RHI", "PlanetX"
 		});
+		PrivateDependencyModuleNames.Add("ImageWriteQueue");
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.AddRange(new string[] { "AssetRegistry", "MeshDescription", "StaticMeshDescription" });
+		}
 
 		if (Target.Platform == UnrealTargetPlatform.Win64)
 		{

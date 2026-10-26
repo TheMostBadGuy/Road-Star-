@@ -55,6 +55,8 @@ public:
 	// ------------------------------------------------------------ cameras
 	ERoadsterCamera CameraMode = ERoadsterCamera::Chase;
 	FRotator LookOffset = FRotator::ZeroRotator;   // mouse / right-stick look
+	/** Select a view with a camera cut; leaves driving and simulation state unchanged. */
+	void SetCameraMode(ERoadsterCamera NewMode);
 	void CycleCamera();
 	bool IsInterior() const { return CameraMode == ERoadsterCamera::Cockpit; }
 	/** Free camera driven by the controller (track builder / photo mode). */
@@ -75,6 +77,8 @@ public:
 	// ------------------------------------------------------------ car state toggles (UI)
 	int32 ExteriorLights = 3;      // Off / DRL / On / Auto
 	bool bTrackMode = false;
+	/** Set only while a validated PlanetX host owns the planet visual. */
+	bool bPlanetXVisualActive = false;
 	float LapTime = 0.f, LastLap = -1.f, BestLap = -1.f;
 	int32 LapCount = 0;
 	TArray<float> LapHistory;
@@ -154,13 +158,20 @@ private:
 	double Accumulator = 0.0;
 	double DebugAfterReset = -1.0;
 	FVector CamPos = FVector::ZeroVector;
-	FVector CamVel = FVector::ZeroVector;
+	FVector CameraFollowPos = FVector::ZeroVector;
+	FVector CameraPreviousAnchor = FVector::ZeroVector;
 	FVector CamUp = FVector::UpVector;
 	FRotator CamRot = FRotator::ZeroRotator;
 	float CamFov = 75.f;
 	float CameraAccelG = 0.f;
+	float CameraClearDistance = 0.f;
+	ERoadsterCamera CameraPreviousMode = ERoadsterCamera::Chase;
+	bool bPreviousExternalCam = false;
+	bool bCameraFallbackActive = false;
+	bool bCameraWasObstructed = false;
 	float OrbitYaw = 200.f, OrbitPitch = -12.f;
 	float CaptureTimer = 0.f, ScreenTimer = 0.f;
+	bool bCarPreviewCaptured = false;
 	float CinematicTimer = 0.f;
 	float DoorOpenFraction = 0.f;
 	float VentOpenFraction = 0.f;

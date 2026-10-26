@@ -1,0 +1,4 @@
+stowed vertices 224470 visible_top 1.1439697742462158 probe_top 1.1600000000000001 ceiling_gap_m -0.016030225753784322 local_gap_m 0.8576954772887612 Roadster_Body
+wing_low_drag vertices 224470 visible_top 1.2398180391706581 probe_top 1.1600000000000001 ceiling_gap_m 0.079818039170658 local_gap_m 0.8576954772887612 Roadster_Body
+wing_high_downforce vertices 224470 visible_top 1.2840352785908336 probe_top 1.1600000000000001 ceiling_gap_m 0.12403527859083341 local_gap_m 0.8576954772887612 Roadster_Body
+doors_open vertices 224470 visible_top 1.9134799488523115 probe_top 1.1600000000000001 ceiling_gap_m 0.7534799488523114 local_gap_m 1.16689436776256 Door_L

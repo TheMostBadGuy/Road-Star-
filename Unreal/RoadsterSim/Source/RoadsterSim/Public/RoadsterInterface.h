@@ -99,6 +99,7 @@ private:
 	void LabGasPage(float X, float Y, float W, float H);
 	void LabFlightPage(float X, float Y, float W, float H);
 	void LabControlsPage(float X, float Y, float W, float H);
+	void LabHandlingPage(float X, float Y, float W, float H);
 
 	FString Speed(double Mps, bool bUnit = false) const;
 	FString Temp(double C) const;

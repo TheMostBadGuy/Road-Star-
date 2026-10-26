@@ -7,10 +7,13 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
+#include "ProfilingDebugging/CsvProfiler.h"
 #include "Components/SpotLightComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/AudioComponent.h"
 #include "Camera/CameraComponent.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/CanvasRenderTarget2D.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -21,16 +24,93 @@
 #include "Engine/DirectionalLight.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include <cmath>
 
 using namespace Roadster;
 
 // Feature switches for profiling: 1 screens, 2 car-view capture, 4 smoke, 8 HUD (bit set = disabled)
 static TAutoConsoleVariable<int32> CVarRoadsterDisable(TEXT("roadster.Disable"), 0, TEXT("Bitmask: 1 screens, 2 car capture, 4 smoke, 8 hud"));
+CSV_DEFINE_CATEGORY(Roadster, true);
 int32 RoadsterDisableMask() { return CVarRoadsterDisable.GetValueOnGameThread(); }
 // Diagnostic logging: 0 off, 1 telemetry + resets (default with -autodrive), 2 verbose (autopilot, reset settle, respawn search)
 static TAutoConsoleVariable<int32> CVarRoadsterLog(TEXT("roadster.Log"), 0, TEXT("0 off, 1 telemetry, 2 verbose"));
 int32 RoadsterLogLevel() { return CVarRoadsterLog.GetValueOnGameThread(); }
 void SetRoadsterLogLevel(int32 Level) { CVarRoadsterLog->Set(Level, ECVF_SetByCommandline); }
+
+static TAutoConsoleVariable<int32> CVarRoadsterCameraDebug(TEXT("roadster.CameraDebug"), 0, TEXT("1 logs player camera mode, boom clearance and cockpit fallback transitions"));
+
+// BEGIN ROADSTER_CAMERA_MOTION -- compiled directly by the portable camera harness.
+namespace RoadsterCameraMotion
+{
+	inline double Alpha(double DeltaSeconds, double Rate)
+	{
+		if (Rate <= 0.0) return 1.0;
+		return 1.0 - std::exp(-Rate * (DeltaSeconds > 0.0 ? DeltaSeconds : 0.0));
+	}
+	template <typename V>
+	V FollowRelative(const V& Current, const V& PreviousAnchor, const V& Anchor, const V& DesiredOffset, double DeltaSeconds)
+	{
+		const double A = Alpha(DeltaSeconds, 7.0);
+		return Anchor + (Current - PreviousAnchor) * (1.0 - A) + DesiredOffset * A;
+	}
+	inline double ObstacleDistance(double DesiredDistance, double HitDistance, double Margin)
+	{
+		const double D = HitDistance - Margin;
+		return D < 0.0 ? 0.0 : (D < DesiredDistance ? D : DesiredDistance);
+	}
+	inline bool NeedsCockpit(bool bStartPenetrating, double AllowedDistance, double CarClearance)
+	{
+		return bStartPenetrating || AllowedDistance < CarClearance;
+	}
+	inline double ReleaseDistance(double PreviousDistance, double AllowedDistance, double DeltaSeconds, bool bReset, bool bWasFallback)
+	{
+		if (bReset || bWasFallback || PreviousDistance <= 0.0 || AllowedDistance < PreviousDistance) return AllowedDistance;
+		return PreviousDistance + (AllowedDistance - PreviousDistance) * Alpha(DeltaSeconds, 8.0);
+	}
+	inline bool ResetView(bool bInitialized, int PreviousMode, int Mode, bool bWasExternal, bool bExternal)
+	{
+		return !bInitialized || PreviousMode != Mode || bWasExternal != bExternal;
+	}
+}
+// END ROADSTER_CAMERA_MOTION
+
+namespace
+{
+	struct FCameraBoomQuery
+	{
+		float AllowedDistance = 0.f;
+		bool bObstructed = false;
+		bool bStartPenetrating = false;
+	};
+
+	FCameraBoomQuery QueryCameraBoom(UWorld* World, const AActor* Car, const FVector& Anchor, const FVector& Desired)
+	{
+		constexpr float Radius = 12.f, Skin = 3.f; // cm: near-plane clearance, including the small speed cue
+		FCameraBoomQuery Result;
+		Result.AllowedDistance = FVector::Dist(Anchor, Desired);
+		if (!World || Result.AllowedDistance <= UE_SMALL_NUMBER) return Result;
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(RoadsterCameraBoom), true, Car);
+		Params.bFindInitialOverlaps = true;
+		FCollisionObjectQueryParams Objects;
+		Objects.AddObjectTypesToQuery(ECC_WorldStatic);
+		Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
+		FHitResult Hit;
+		if (World->SweepSingleByObjectType(Hit, Anchor, Desired, FQuat::Identity, Objects, FCollisionShape::MakeSphere(Radius), Params))
+		{
+			Result.bObstructed = true;
+			Result.bStartPenetrating = Hit.bStartPenetrating;
+			Result.AllowedDistance = float(RoadsterCameraMotion::ObstacleDistance(Result.AllowedDistance, Hit.Distance, Skin));
+		}
+		// Also preserve line of sight against thin/complex occluders, using the same world objects.
+		if (World->LineTraceSingleByObjectType(Hit, Anchor, Desired, Objects, Params))
+		{
+			Result.bObstructed = true;
+			Result.bStartPenetrating |= Hit.bStartPenetrating;
+			Result.AllowedDistance = float(RoadsterCameraMotion::ObstacleDistance(Result.AllowedDistance, Hit.Distance, Radius + Skin));
+		}
+		return Result;
+	}
+}
 
 namespace
 {
@@ -311,7 +391,7 @@ void ARoadsterPawn::BeginPlay()
 	for (UActorComponent* C : Comps)
 	{
 		UStaticMeshComponent* S = Cast<UStaticMeshComponent>(C);
-		if (S && !PlumesRear.Contains(S) && !PlumesLift.Contains(S) && !PlumesYaw.Contains(S) && S != Smoke)
+		if (S && !PlumesRear.Contains(S) && !PlumesLift.Contains(S) && !PlumesYaw.Contains(S) && S != Smoke && S != EarthVisual && S != ScreenDisplay && S != ForwardA && S != ForwardB)
 			CarCapture->ShowOnlyComponents.Add(S);
 	}
 
@@ -527,6 +607,8 @@ Roadster::TraceFn ARoadsterPawn::MakeTrace()
 
 void ARoadsterPawn::StepSimulation(float DeltaSeconds)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(RoadsterSimulation);
+	CSV_SCOPED_TIMING_STAT(Roadster, Simulation);
 	if (bSimPaused) return;
 	const double h = 0.001;
 	Accumulator += FMath::Min(DeltaSeconds, 0.05f) * TimeScale;
@@ -569,7 +651,7 @@ void ARoadsterPawn::Tick(float DeltaSeconds)
 	UpdateVisuals(DeltaSeconds);
 	if (!(RoadsterDisableMask() & 4)) UpdateSmoke(DeltaSeconds);
 	UpdateAudio(DeltaSeconds);
-	EarthVisual->SetVisibility(Sim.Set.bRoadstarMode && Sim.T.AltitudeM > 1000.0);
+	EarthVisual->SetVisibility(!bPlanetXVisualActive && Sim.Set.bRoadstarMode && Sim.T.AltitudeM > 1000.0);
 	UpdateLaps(DeltaSeconds);
 	UpdateCamera(DeltaSeconds);
 
@@ -577,20 +659,27 @@ void ARoadsterPawn::Tick(float DeltaSeconds)
 	ScreenTimer += DeltaSeconds;
 	if (ScreenTimer > 1.f / 30.f && !(RoadsterDisableMask() & 1))
 	{
+		TRACE_CPUPROFILER_EVENT_SCOPE(RoadsterScreens);
+		CSV_SCOPED_TIMING_STAT(Roadster, Screens);
 		ScreenTimer = 0.f;
-		if (ScreenRT) ScreenRT->UpdateResource();
-		if (ForwardRT_A) ForwardRT_A->UpdateResource();
-		if (ForwardRT_B) ForwardRT_B->UpdateResource();
+		if (ScreenRT) ScreenRT->FastUpdateResource();
+		if (ForwardRT_A) ForwardRT_A->FastUpdateResource();
+		if (ForwardRT_B) ForwardRT_B->FastUpdateResource();
 	}
 	CaptureTimer += DeltaSeconds;
-	if (CaptureTimer > 1.f / 15.f && Interface && Interface->WantsCarView() && !(RoadsterDisableMask() & 2))
+	const ARoadsterController* ScreenController = Cast<ARoadsterController>(GetController());
+	const bool bCarViewVisible = IsInterior() || (ScreenController && ScreenController->Mode == EUIMode::Touchscreen);
+	if (CaptureTimer > 1.f / 15.f && Interface && Interface->WantsCarView() && (bCarViewVisible || !bCarPreviewCaptured) && !(RoadsterDisableMask() & 2))
 	{
+		TRACE_CPUPROFILER_EVENT_SCOPE(RoadsterCarPreview);
+		CSV_SCOPED_TIMING_STAT(Roadster, CarPreview);
 		CaptureTimer = 0.f;
 		const FRotator View = Interface->CarViewRotation();
 		const FVector Dir = View.Vector();
 		CarCapture->SetRelativeLocation(B2U(-0.1, 0, 0.5) - Dir * 1450.f);
 		CarCapture->SetRelativeRotation(View);
 		CarCapture->CaptureScene();
+		bCarPreviewCaptured = true;
 	}
 }
 
@@ -694,6 +783,8 @@ void ARoadsterPawn::UpdateSuspension(FTransform OutUpright[4])
 
 void ARoadsterPawn::UpdateVisuals(float DeltaSeconds)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(RoadsterVisuals);
+	CSV_SCOPED_TIMING_STAT(Roadster, Visuals);
 	const Spec& S = Sim.S;
 	// suspension first: the uprights carry the wheels and brakes (camber, toe, kingpin steering)
 	FTransform Upright[4];
@@ -836,6 +927,8 @@ void ARoadsterPawn::EmitPuff(const FVector& Pos, const FVector& Vel, float Size,
 
 void ARoadsterPawn::UpdateSmoke(float DeltaSeconds)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(RoadsterSmoke);
+	CSV_SCOPED_TIMING_STAT(Roadster, Smoke);
 	const FTransform T = GetActorTransform();
 	const FVector CarVel = ToU(Sim.V);
 	// tire smoke from sliding rear tires, dust/vapour from the fans and thrusters
@@ -930,65 +1023,87 @@ void ARoadsterPawn::UpdateLaps(float DeltaSeconds)
 	}
 }
 
-void ARoadsterPawn::CycleCamera()
+void ARoadsterPawn::SetCameraMode(ERoadsterCamera NewMode)
 {
-	CameraMode = (ERoadsterCamera)(((uint8)CameraMode + 1) % ((uint8)ERoadsterCamera::Cinematic + 1));
+	if (CameraMode == NewMode) return;
+	CameraMode = NewMode;
 	LookOffset = FRotator::ZeroRotator;
 	bCamInit = false;
 }
 
+void ARoadsterPawn::CycleCamera()
+{
+	SetCameraMode((ERoadsterCamera)(((uint8)CameraMode + 1) % ((uint8)ERoadsterCamera::Cinematic + 1)));
+}
+
 void ARoadsterPawn::UpdateCamera(float DeltaSeconds)
 {
+	using namespace RoadsterCameraMotion;
 	const FTransform T = GetActorTransform();
 	const FVector Fwd = T.GetUnitAxis(EAxis::X), Up = T.GetUnitAxis(EAxis::Z);
 	const FVector CarPos = T.GetLocation();
 	const float Speed = Sim.T.Speed;
 	const float Feel = FMath::Clamp(SpeedFeelIntensity, 0.f, 1.5f);
-	CameraAccelG = FMath::FInterpTo(CameraAccelG, (float)Sim.T.AccelG.x, DeltaSeconds, 8.f);
 	const float Rush = FMath::Clamp(Speed / 85.f, 0.f, 1.f);
+	const bool bResetView = ResetView(bCamInit, int(CameraPreviousMode), int(CameraMode), bPreviousExternalCam, bExternalCam);
+	const bool bWasFallback = bCameraFallbackActive;
+	const bool bWasObstructed = bCameraWasObstructed;
+	if (bResetView)
+	{
+		CamUp = Up;
+		CameraPreviousAnchor = CarPos;
+		CameraFollowPos = CarPos;
+		CameraClearDistance = 0.f;
+		bCameraFallbackActive = false;
+	}
+	const float AccelTarget = float(Sim.T.AccelG.x);
+	CameraAccelG = bResetView ? AccelTarget : FMath::Lerp(CameraAccelG, AccelTarget, float(Alpha(DeltaSeconds, 8.0)));
 	float TargetFov = 70.f;
-
+	bool bBoomObstructed = false;
+	float RequestedBoomDistance = 0.f;
 	auto LookRot = [](const FVector& Dir, const FVector& UpHint) { return FRotationMatrix::MakeFromXZ(Dir, UpHint).Rotator(); };
+	auto CockpitPose = [&]()
+	{
+		const float LongLag = FMath::Clamp(CameraAccelG * 0.022f, -0.035f, 0.065f) * Feel;
+		const float LatLag = FMath::Clamp(float(Sim.T.AccelG.y) * 0.012f, -0.025f, 0.025f) * Feel;
+		CamPos = T.TransformPosition(B2U(-0.08 - LongLag, 0.38 + LatLag, 0.98));
+		CamRot = (T.GetRotation() * FQuat(FRotator(-6.f + LookOffset.Pitch - CameraAccelG * 0.4f * Feel, LookOffset.Yaw, FMath::Clamp(float(Sim.T.AccelG.y), -2.f, 2.f) * 0.5f * Feel))).Rotator();
+		CamUp = Up;
+		TargetFov = 80.f + (Rush * 7.f + FMath::Clamp(CameraAccelG, 0.f, 3.f)) * Feel;
+	};
 
-	switch (CameraMode)
+	if (bExternalCam)
+	{
+		// The builder/photo free camera intentionally remains unrestricted.
+		CamPos = ExtCamPos;
+		CamRot = ExtCamRot;
+		TargetFov = 70.f;
+		bCameraFallbackActive = false;
+	}
+	else switch (CameraMode)
 	{
 	case ERoadsterCamera::Chase:
 	case ERoadsterCamera::ChaseFar:
 	{
 		const bool bFar = CameraMode == ERoadsterCamera::ChaseFar;
-		// up follows the car (so loops and ceilings stay readable), smoothed
 		CamUp = FMath::VInterpNormalRotationTo(CamUp, Up, DeltaSeconds, 220.f);
-		// heading follows velocity when moving, the body otherwise
 		FVector Head = Fwd;
 		if (Speed > 3.0) Head = FMath::Lerp(Fwd, ToU(Sim.V).GetSafeNormal(), 0.35f).GetSafeNormal();
-		const FRotator Look = LookOffset;
-		const FVector Back = FQuat(CamUp, FMath::DegreesToRadians(Look.Yaw)).RotateVector(-Head);
+		const FVector Back = FQuat(CamUp, FMath::DegreesToRadians(LookOffset.Yaw)).RotateVector(-Head);
 		const float Dist = (bFar ? 980.f : 640.f) + FMath::Min(Speed, 160.f) * 1.1f + FMath::Clamp(CameraAccelG, -2.f, 4.f) * 12.f * Feel;
-		const float Height = (bFar ? 300.f : 170.f) - Rush * 22.f * Feel + FMath::Clamp(Look.Pitch, -30.f, 60.f) * 4.f;
-		const FVector Desired = CarPos + Back * Dist + CamUp * Height;
-		if (!bCamInit) { CamPos = Desired; CamVel = FVector::ZeroVector; bCamInit = true; }
-		// exponential follow in the car frame: exact for any frame time (stable at low fps)
-		const float Follow = 1.f - FMath::Exp(-7.f * FMath::Min(DeltaSeconds, 0.25f));
-		const FVector Rel = CamPos - CarPos;
-		const FVector DesiredRel = Desired - CarPos;
-		CamPos = CarPos + FMath::Lerp(Rel, DesiredRel, Follow);
-		if (FVector::DistSquared(CamPos, Desired) > FMath::Square(3000.f)) CamPos = Desired;
-		const FVector Target = CarPos + CamUp * 80.f + Fwd * 120.f;
-		CamRot = LookRot((Target - CamPos).GetSafeNormal(), CamUp);
+		const float Height = (bFar ? 300.f : 170.f) - Rush * 22.f * Feel + FMath::Clamp(LookOffset.Pitch, -30.f, 60.f) * 4.f;
+		const FVector DesiredOffset = Back * Dist + CamUp * Height;
+		// Carry all car translation immediately; smooth only the changing boom offset.
+		// Keep this unobstructed state separate from the collision-resolved eye position.
+		CameraFollowPos = bResetView ? CarPos + DesiredOffset : FollowRelative(CameraFollowPos, CameraPreviousAnchor, CarPos, DesiredOffset, DeltaSeconds);
+		CamPos = CameraFollowPos;
+		CamRot = LookRot((CarPos + CamUp * 80.f + Fwd * 120.f - CamPos).GetSafeNormal(), CamUp);
 		TargetFov = 72.f + (Rush * 16.f + FMath::Clamp(CameraAccelG, 0.f, 3.f) * 1.4f) * Feel;
 		break;
 	}
 	case ERoadsterCamera::Cockpit:
-	{
-		// driver's eye, left-hand drive: ~0.64 m to the yoke rim (the POV footage shows the yoke close), headliner clear
-		const float LongLag = FMath::Clamp(CameraAccelG * 0.022f, -0.035f, 0.065f) * Feel;
-		const float LatLag = FMath::Clamp((float)Sim.T.AccelG.y * 0.012f, -0.025f, 0.025f) * Feel;
-		CamPos = T.TransformPosition(B2U(-0.08 - LongLag, 0.38 + LatLag, 0.98));
-		CamRot = (T.GetRotation() * FQuat(FRotator(-6.f + LookOffset.Pitch - CameraAccelG * 0.4f * Feel, LookOffset.Yaw, FMath::Clamp((float)Sim.T.AccelG.y, -2.f, 2.f) * 0.5f * Feel))).Rotator();
-		CamUp = Up;
-		TargetFov = 80.f + (Rush * 7.f + FMath::Clamp(CameraAccelG, 0.f, 3.f)) * Feel;
+		CockpitPose();
 		break;
-	}
 	case ERoadsterCamera::Hood:
 		CamPos = T.TransformPosition(B2U(1.75, 0, 0.95));
 		CamRot = (T.GetRotation() * FQuat(FRotator(-3.f + LookOffset.Pitch, LookOffset.Yaw, 0))).Rotator();
@@ -1003,7 +1118,8 @@ void ARoadsterPawn::UpdateCamera(float DeltaSeconds)
 		break;
 	case ERoadsterCamera::Orbit:
 	{
-		OrbitYaw += LookOffset.Yaw; OrbitPitch = FMath::Clamp(OrbitPitch + LookOffset.Pitch, -80.f, 10.f);
+		OrbitYaw += LookOffset.Yaw;
+		OrbitPitch = FMath::Clamp(OrbitPitch + LookOffset.Pitch, -80.f, 10.f);
 		LookOffset = FRotator::ZeroRotator;
 		const FQuat Q = T.GetRotation() * FQuat(FRotator(OrbitPitch, OrbitYaw, 0));
 		const FVector Centre = T.TransformPosition(B2U(0, 0, 0.6));
@@ -1015,36 +1131,78 @@ void ARoadsterPawn::UpdateCamera(float DeltaSeconds)
 	}
 	case ERoadsterCamera::Cinematic:
 	{
-		// trackside "TV" cameras: drop a camera ahead of the car and let it pass
 		CinematicTimer -= DeltaSeconds;
-		if (!bCamInit || CinematicTimer <= 0.f || FVector::Dist(CinematicPos, CarPos) > 9000.f)
+		if (bResetView || CinematicTimer <= 0.f || FVector::Dist(CinematicPos, CarPos) > 9000.f)
 		{
 			const FVector Vel = ToU(Sim.V);
-			const FVector Ahead = CarPos + Vel * 2.2f + FVector::CrossProduct(Up, Fwd).GetSafeNormal() * FMath::FRandRange(600.f, 1100.f) * (FMath::RandBool() ? 1.f : -1.f) + Up * FMath::FRandRange(80.f, 400.f);
-			CinematicPos = Ahead; CinematicTimer = 4.5f; bCamInit = true;
+			CinematicPos = CarPos + Vel * 2.2f + FVector::CrossProduct(Up, Fwd).GetSafeNormal() * FMath::FRandRange(600.f, 1100.f) * (FMath::RandBool() ? 1.f : -1.f) + Up * FMath::FRandRange(80.f, 400.f);
+			CinematicTimer = 4.5f;
 		}
 		CamPos = CinematicPos;
-		CamRot = LookRot((CarPos + Up * 60.f - CamPos).GetSafeNormal(), FMath::Abs(Up.Z) > 0.3f ? FVector(0, 0, FMath::Sign(Up.Z)) : Up);
-		TargetFov = FMath::Clamp(3000.f / FMath::Max(300.f, (float)FVector::Dist(CamPos, CarPos)) * 30.f, 12.f, 70.f);
+		CamUp = FMath::Abs(Up.Z) > 0.3f ? FVector(0, 0, FMath::Sign(Up.Z)) : Up;
+		CamRot = LookRot((CarPos + Up * 60.f - CamPos).GetSafeNormal(), CamUp);
+		TargetFov = FMath::Clamp(3000.f / FMath::Max(300.f, float(FVector::Dist(CamPos, CarPos))) * 30.f, 12.f, 70.f);
 		break;
 	}
 	}
-	if (bExternalCam) { CamPos = ExtCamPos; CamRot = ExtCamRot; TargetFov = 70.f; bCamInit = false; }
-	else if (CameraMode == ERoadsterCamera::Cockpit || CameraMode == ERoadsterCamera::Hood || CameraMode == ERoadsterCamera::Chase)
+	if (!bExternalCam && (CameraMode == ERoadsterCamera::Cockpit || CameraMode == ERoadsterCamera::Hood || CameraMode == ERoadsterCamera::Chase))
 	{
 		const float Contact = Sim.T.WheelsInContact > 0 ? 1.f : 0.15f;
 		const float Micro = Rush * Rush * Contact * Feel;
-		CamPos += Up * (FMath::Sin((float)Sim.SimTime * 43.f) * 0.55f + FMath::Sin((float)Sim.SimTime * 71.f) * 0.18f) * Micro;
-		Camera->PostProcessSettings.MotionBlurAmount = FMath::Lerp(0.18f, 0.38f, Rush) * FMath::Min(Feel, 1.f);
+		CamPos += Up * (FMath::Sin(float(Sim.SimTime) * 43.f) * 0.55f + FMath::Sin(float(Sim.SimTime) * 71.f) * 0.18f) * Micro;
 	}
-	CamFov = FMath::FInterpTo(CamFov, TargetFov, DeltaSeconds, 3.f);
+
+	const bool bPlayerBoom = !bExternalCam && (CameraMode == ERoadsterCamera::Chase || CameraMode == ERoadsterCamera::ChaseFar || CameraMode == ERoadsterCamera::Orbit || CameraMode == ERoadsterCamera::Cinematic);
+	bCameraFallbackActive = false;
+	if (bPlayerBoom)
+	{
+		FVector BoundsMin(-225.f, -105.f, 0.f), BoundsMax(225.f, 105.f, 120.f);
+		if (Body && Body->GetStaticMesh()) Body->GetLocalBounds(BoundsMin, BoundsMax);
+		const FVector Anchor = T.TransformPosition((BoundsMin + BoundsMax) * 0.5);
+		// Enclose the car, plus probe/skin and a small hardware margin. Never pull the eye into the car.
+		const float CarClearance = float((BoundsMax - BoundsMin).Size() * 0.5) + 25.f;
+		const FVector Direction = (CamPos - Anchor).GetSafeNormal();
+		RequestedBoomDistance = float(FVector::Dist(Anchor, CamPos));
+		const FCameraBoomQuery Query = QueryCameraBoom(GetWorld(), this, Anchor, CamPos);
+		bBoomObstructed = Query.bObstructed;
+		bCameraFallbackActive = NeedsCockpit(Query.bStartPenetrating, Query.AllowedDistance, CarClearance);
+		if (bCameraFallbackActive)
+		{
+			CameraClearDistance = Query.AllowedDistance;
+			CockpitPose();
+		}
+		else
+		{
+			// Obstructions retract immediately; an opening boom releases smoothly. A cockpit
+			// fallback exits with a cut, avoiding interpolation through seats/body panels.
+			CameraClearDistance = float(ReleaseDistance(CameraClearDistance, Query.AllowedDistance, DeltaSeconds, bResetView, bWasFallback));
+			CamPos = Anchor + Direction * CameraClearDistance;
+			const FVector Aim = CameraMode == ERoadsterCamera::Chase || CameraMode == ERoadsterCamera::ChaseFar ? CarPos + CamUp * 80.f + Fwd * 120.f : CarPos + Up * 60.f;
+			CamRot = LookRot((Aim - CamPos).GetSafeNormal(), CamUp);
+		}
+	}
+
+	// Apply comfort consistently after any view change, rather than inheriting another mode's blur.
+	Camera->PostProcessSettings.MotionBlurAmount = bExternalCam ? 0.f : FMath::Lerp(0.18f, 0.38f, Rush) * FMath::Min(Feel, 1.f);
+	CamFov = bResetView || bWasFallback != bCameraFallbackActive ? TargetFov : FMath::Lerp(CamFov, TargetFov, float(Alpha(DeltaSeconds, 3.0)));
+	if (bResetView || bWasFallback != bCameraFallbackActive)
+	{
+		Camera->NotifyCameraCut();
+		if (auto* PC = Cast<APlayerController>(GetController()); PC && PC->PlayerCameraManager) PC->PlayerCameraManager->SetGameCameraCutThisFrame();
+	}
 	Camera->SetWorldLocationAndRotation(CamPos, CamRot);
 	Camera->SetFieldOfView(CamFov);
-	// From the driver's seat the eye stays adapted to the bright road (as in Tesla's POV footage): without this the
-	// histogram exposure brightens for the dark cabin, the grey suede reads white and the windshield blows out.
-	const bool bCabin = IsInterior() && !bExternalCam;
+	const bool bCabin = !bExternalCam && (IsInterior() || bCameraFallbackActive);
 	Camera->PostProcessSettings.bOverride_AutoExposureBias = bCabin;
-	Camera->PostProcessSettings.AutoExposureBias = -0.9f;   // level volume uses +0.3 -> about -1.2 stops in the cabin
+	Camera->PostProcessSettings.AutoExposureBias = -0.9f;
+	const int32 CameraLog = CVarRoadsterCameraDebug.GetValueOnGameThread();
+	if (CameraLog > 1 || (CameraLog > 0 && (bResetView || bWasFallback != bCameraFallbackActive || bWasObstructed != bBoomObstructed)))
+		UE_LOG(LogTemp, Display, TEXT("CAMERA mode=%d free=%d blocked=%d fallback=%d boom=%.2fm clear=%.2fm fov=%.2f eye=(%.2f,%.2f,%.2f)"), int(CameraMode), bExternalCam, bBoomObstructed, bCameraFallbackActive, RequestedBoomDistance / 100.f, CameraClearDistance / 100.f, CamFov, CamPos.X / 100.f, CamPos.Y / 100.f, CamPos.Z / 100.f);
+	CameraPreviousAnchor = CarPos;
+	CameraPreviousMode = CameraMode;
+	bPreviousExternalCam = bExternalCam;
+	bCameraWasObstructed = bBoomObstructed;
+	bCamInit = true;
 }
 
 void ARoadsterPawn::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)

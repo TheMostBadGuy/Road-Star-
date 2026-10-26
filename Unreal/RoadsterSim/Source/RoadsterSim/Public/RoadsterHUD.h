@@ -25,6 +25,11 @@ private:
 	int32 SaveCounter = 1;
 	int32 MenuPage = 0;   // 0 main, 1 tracks, 2 graphics, 3 controls
 	int32 Quality = 3;
+	bool bGraphicsInitialized = false;
+	int32 GraphicsResolution = 0, GraphicsWindowMode = 0, GraphicsFrameLimit = 0;
+	int32 GraphicsVSync = 0, GraphicsShadows = 3, GraphicsReflections = 3;
+	float GraphicsResolutionScale = 100.f;
+	FIntPoint GraphicsOriginalResolution = FIntPoint(1920, 1080);
 
 	void DrawTitle(ARoadsterController* PC, ARoadsterPawn* P);
 	void DrawDriving(ARoadsterController* PC, ARoadsterPawn* P);

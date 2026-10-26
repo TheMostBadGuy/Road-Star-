@@ -1,0 +1,55 @@
+CASE Performance motors finite stock N2/cold tyres/AeroAuto; stage=1.5s excluded; start mass=1700.000000000000kg gas=0.000000000000kg
+PASS | staging launch control holds timer inactive | 8.96616266165313e-05
+PASS | 60mph timer records first actual forward-speed crossing | 60.0290591110186
+PASS | quarter-mile timer records first integrated-distance crossing | 402.415195366186
+PASS | stock run produces finite positive 60mph and quarter-mile results | 8.12600000000094
+PASS | timer triggers exactly once for this acceleration run | 1
+PASS | 60mph timer equals elapsed fixed physics steps since trigger | -7.90478793533111e-14
+PASS | quarter timer equals elapsed fixed physics steps since trigger | 9.36140054363932e-13
+PASS | one-foot rollout subtracts first 0.3048m time from 0-60 | 1.51499999999992
+PASS | release-clock elapsed includes explicit speed-trigger delay | 0.00400000000043366
+PASS | finite stock resources stay finite and are never topped up | 0
+PASS | Performance acceleration has no gas thrust or inventory | 0
+PASS | continued acceleration cannot overwrite completed split times | 8.12600000000094
+PASS | brake input stops the active timer | 0
+PASS | explicit reset clears every public split and clock | 0
+PASS | idle after reset does not retrigger a run | 0
+PASS | reset plus a fresh standstill launch triggers one new 60mph run | 1
+TIMING Performance motors t60=1.723000s rollout60=1.515000s quarter=8.126000s trap=180.414254mph trigger_delay=0.004000s release60=1.727000s releaseQuarter=8.130000s firstQuarterDistance=402.415195366m gasRemaining=0.000000000kg PASS=1
+CASE Thrust boost finite stock N2/cold tyres/AeroAuto; stage=1.5s excluded; start mass=1906.775743329297kg gas=71.775743329297kg
+PASS | staging launch control holds timer inactive | 9.05677846278682e-05
+PASS | 60mph timer records first actual forward-speed crossing | 60.0025439805963
+PASS | quarter-mile timer records first integrated-distance crossing | 402.371725096581
+PASS | stock run produces finite positive 60mph and quarter-mile results | 7.41800000000081
+PASS | timer triggers exactly once for this acceleration run | 1
+PASS | 60mph timer equals elapsed fixed physics steps since trigger | 5.55111512312578e-16
+PASS | quarter timer equals elapsed fixed physics steps since trigger | 8.11795075605914e-13
+PASS | one-foot rollout subtracts first 0.3048m time from 0-60 | 0.710000000000001
+PASS | release-clock elapsed includes explicit speed-trigger delay | 0.00400000000005252
+PASS | finite stock resources stay finite and are never topped up | 7.03406434865386
+PASS | boost acceleration spends physical onboard N2 | -64.7416789806432
+PASS | continued acceleration cannot overwrite completed split times | 7.41800000000081
+PASS | brake input stops the active timer | 0
+PASS | explicit reset clears every public split and clock | 0
+PASS | idle after reset does not retrigger a run | 0
+PASS | reset plus a fresh standstill launch triggers one new 60mph run | 1
+TIMING Thrust boost t60=0.820000s rollout60=0.710000s quarter=7.418000s trap=178.113425mph trigger_delay=0.004000s release60=0.824000s releaseQuarter=7.422000s firstQuarterDistance=402.371725097m gasRemaining=7.034064349kg PASS=1
+CASE Rocket boost finite stock N2/cold tyres/AeroAuto; stage=1.5s excluded; start mass=2244.812818692143kg gas=214.812818692143kg
+PASS | staging launch control holds timer inactive | 8.74399182761309e-05
+PASS | 60mph timer records first actual forward-speed crossing | 60.0046204934647
+PASS | quarter-mile timer records first integrated-distance crossing | 402.371207205001
+PASS | stock run produces finite positive 60mph and quarter-mile results | 6.52100000000051
+PASS | timer triggers exactly once for this acceleration run | 1
+PASS | 60mph timer equals elapsed fixed physics steps since trigger | 3.33066907387547e-16
+PASS | quarter timer equals elapsed fixed physics steps since trigger | 5.12478948166972e-13
+PASS | one-foot rollout subtracts first 0.3048m time from 0-60 | 0.447
+PASS | release-clock elapsed includes explicit speed-trigger delay | 0.00399999999996725
+PASS | finite stock resources stay finite and are never topped up | 22.6877537931306
+PASS | boost acceleration spends physical onboard N2 | -192.125064899013
+PASS | continued acceleration cannot overwrite completed split times | 6.52100000000051
+PASS | brake input stops the active timer | 0
+PASS | explicit reset clears every public split and clock | 0
+PASS | idle after reset does not retrigger a run | 0
+PASS | reset plus a fresh standstill launch triggers one new 60mph run | 1
+TIMING Rocket boost t60=0.564000s rollout60=0.447000s quarter=6.521000s trap=186.507790mph trigger_delay=0.004000s release60=0.568000s releaseQuarter=6.525000s firstQuarterDistance=402.371207205m gasRemaining=22.687753793kg PASS=1
+RESULT 48/48 passed

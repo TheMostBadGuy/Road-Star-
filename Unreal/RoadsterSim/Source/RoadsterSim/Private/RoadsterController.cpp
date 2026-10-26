@@ -13,6 +13,13 @@
 #include "HAL/IConsoleManager.h"
 #include "RoadsterControlMath.h"
 #include "AssetCompilingManager.h"
+#include "HAL/PlatformTime.h"
+#include "RenderTimer.h"
+#include "DynamicRHI.h"
+#include "Engine/GameViewportClient.h"
+#include "ImageWriteQueue.h"
+#include "ImageWriteTask.h"
+#include "Modules/ModuleManager.h"
 #include "Misc/App.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Dom/JsonObject.h"
@@ -28,6 +35,9 @@ extern void SetRoadsterLogLevel(int32 Level);
 
 using namespace Roadster;
 
+static TAutoConsoleVariable<int32> CVarRoadsterAsyncScreenshots(TEXT("roadster.AsyncScreenshots"), 1,
+	TEXT("1: encode/write regular PNG screenshots on bounded ImageWriteQueue; GPU readback is still synchronous. 0: original engine screenshot path."));
+
 ARoadsterController::ARoadsterController()
 {
 	bShowMouseCursor = true;
@@ -37,6 +47,7 @@ ARoadsterController::ARoadsterController()
 void ARoadsterController::BeginPlay()
 {
 	Super::BeginPlay();
+	UpdateScreenshotBinding();
 	LoadControlSettings();
 	NativePad.Initialize();
 	InputConnectionHandle = IPlatformInputDeviceMapper::Get().GetOnInputDeviceConnectionChange().AddWeakLambda(this,
@@ -54,6 +65,15 @@ void ARoadsterController::BeginPlay()
 
 void ARoadsterController::ConfigureCommandLine()
 {
+	// Driving preferences are applied after Pawn initialization, alongside the input tuning.
+	if (Car())
+	{
+		FConfigFile Saved;
+		Saved.Read(FPaths::ProjectSavedDir() / TEXT("Config/Windows/RoadsterControls.ini"));
+		Saved.GetBool(TEXT("Driving"), TEXT("AssistedSteering"), Car()->Sim.Set.bAssistedSteering);
+		float Grip = static_cast<float>(Car()->Sim.Set.SteeringGripHeadroom);
+		if (Saved.GetFloat(TEXT("Driving"), TEXT("SteeringGripHeadroom"), Grip)) Car()->Sim.Set.SteeringGripHeadroom = FMath::IsFinite(Grip) ? FMath::Clamp(Grip, .65f, 1.f) : .85;
+	}
 	// Possession can precede Pawn::BeginPlay. Apply scenarios and UI pages only once the
 	// pawn's screens and default reset exist, so startup cannot silently erase the request.
 	// command line: -autodrive (autopilot from the start), -track=N (preset), -cam=N (camera mode)
@@ -107,7 +127,7 @@ void ARoadsterController::ConfigureCommandLine()
 	FString Review;
 	if (FParse::Value(FCommandLine::Get(), TEXT("review="), Review))
 	{
-		const bool bLabReview = Review == TEXT("lab") || Review == TEXT("labflight") || Review == TEXT("labcontrols");
+		const bool bLabReview = Review == TEXT("lab") || Review == TEXT("labflight") || Review == TEXT("labcontrols") || Review == TEXT("labhandling");
 		SetMode(Review == TEXT("builder") ? EUIMode::Builder : (Review == TEXT("screen") || bLabReview) ? EUIMode::Touchscreen : EUIMode::Driving);
 		bShowHints = false;
 		if (ARoadsterPawn* P = Car())
@@ -130,7 +150,7 @@ void ARoadsterController::ConfigureCommandLine()
 				P->bTrackMode = false;
 				P->Interface->Tab = ECarTab::Vehicle;
 				P->Interface->Page = EVehiclePage::SimulatorLab;
-				P->Interface->SimulatorWorkspace = Review == TEXT("labflight") ? 1 : Review == TEXT("labcontrols") ? 2 : 0;
+				P->Interface->SimulatorWorkspace = Review == TEXT("labflight") ? 1 : Review == TEXT("labcontrols") ? 2 : Review == TEXT("labhandling") ? 3 : 0;
 			}
 			if (Review == TEXT("orbit") || Review == TEXT("upper")) P->StartRoadstarScenario(Review == TEXT("upper") ? 1 : 0);
 			if (Review == TEXT("doors")) { P->CameraMode = ERoadsterCamera::Orbit; P->bDoorsOpen = true; }
@@ -153,12 +173,78 @@ void ARoadsterController::ConfigureCommandLine()
 
 void ARoadsterController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (AsyncScreenshotHandle.IsValid())
+	{
+		UGameViewportClient::OnScreenshotCaptured().Remove(AsyncScreenshotHandle);
+		AsyncScreenshotHandle.Reset();
+	}
+	// Gameplay never waits for encoding. Flush only at application shutdown, so the
+	// final requested image reaches disk before the image-writing module unloads.
+	if (EndPlayReason == EEndPlayReason::Quit && !PendingScreenshotWrites.IsEmpty())
+		if (IImageWriteQueueModule* Images = FModuleManager::GetModulePtr<IImageWriteQueueModule>(TEXT("ImageWriteQueue")))
+			Images->GetWriteQueue().CreateFence().Wait();
 	if (bRecording) SaveRecording();
 	CancelPilot();
 	StopHapticsNow();
 	IPlatformInputDeviceMapper::Get().GetOnInputDeviceConnectionChange().Remove(InputConnectionHandle);
 	NativePad.Shutdown();
 	Super::EndPlay(EndPlayReason);
+}
+
+void ARoadsterController::UpdateScreenshotBinding()
+{
+	for (int32 Index = PendingScreenshotWrites.Num() - 1; Index >= 0; --Index)
+		if (PendingScreenshotWrites[Index].IsReady())
+		{
+			if (!PendingScreenshotWrites[Index].Get()) UE_LOG(LogTemp, Warning, TEXT("ROADSTER_SCREENSHOT asynchronous image write failed"));
+			PendingScreenshotWrites.RemoveAtSwap(Index);
+		}
+	// Leave the engine's special high-resolution, HDR and alternate-format paths
+	// intact. The normal Roadster review capture requests use opaque PNG images.
+	const FString Extension = FPaths::GetExtension(FScreenshotRequest::GetFilename());
+	const bool bUseAsync = CVarRoadsterAsyncScreenshots.GetValueOnGameThread() != 0 && !GIsHighResScreenshot &&
+		(Extension.IsEmpty() || Extension.Equals(TEXT("png"), ESearchCase::IgnoreCase));
+	if (bUseAsync && !AsyncScreenshotHandle.IsValid())
+	{
+		FModuleManager::LoadModuleChecked<IImageWriteQueueModule>(TEXT("ImageWriteQueue"));
+		AsyncScreenshotHandle = UGameViewportClient::OnScreenshotCaptured().AddUObject(this, &ARoadsterController::CaptureScreenshotAsync);
+	}
+	else if (!bUseAsync && AsyncScreenshotHandle.IsValid())
+	{
+		UGameViewportClient::OnScreenshotCaptured().Remove(AsyncScreenshotHandle);
+		AsyncScreenshotHandle.Reset();
+	}
+}
+
+void ARoadsterController::CaptureScreenshotAsync(int32 Width, int32 Height, const TArray<FColor>& Pixels)
+{
+	constexpr int32 MaxPendingWrites = 2;
+	if (Width <= 0 || Height <= 0 || int64(Width) * Height != Pixels.Num()) return;
+	if (PendingScreenshotWrites.Num() >= MaxPendingWrites)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ROADSTER_SCREENSHOT queue full (%d); capture skipped without blocking gameplay"), MaxPendingWrites);
+		ShowToast(TEXT("Screenshot busy; wait briefly before another capture"));
+		return;
+	}
+	FString Filename = FScreenshotRequest::GetFilename();
+	if (Filename.IsEmpty()) Filename = FPaths::ScreenShotDir() / TEXT("Roadster.png");
+	if (FPaths::GetExtension(Filename).IsEmpty()) Filename += TEXT(".png");
+	TArray64<FColor> OwnedPixels;
+	OwnedPixels.Append(Pixels.GetData(), Pixels.Num());
+	TUniquePtr<FImageWriteTask> Task = MakeUnique<FImageWriteTask>();
+	Task->Filename = Filename;
+	Task->Format = EImageFormat::PNG;
+	Task->PixelData = MakeUnique<TImagePixelData<FColor>>(FIntPoint(Width, Height), MoveTemp(OwnedPixels));
+	Task->AddPreProcessorToSetAlphaOpaque();
+	const double Started = FPlatformTime::Seconds();
+	Task->OnCompleted = [Filename, Started](bool bSuccess)
+	{
+		UE_LOG(LogTemp, Display, TEXT("ROADSTER_SCREENSHOT %s %s encode/write wall=%.1fms"), bSuccess ? TEXT("written") : TEXT("FAILED"), *Filename, (FPlatformTime::Seconds() - Started) * 1000.0);
+	};
+	IImageWriteQueue& Queue = FModuleManager::GetModuleChecked<IImageWriteQueueModule>(TEXT("ImageWriteQueue")).GetWriteQueue();
+	TFuture<bool> Completion = Queue.Enqueue(MoveTemp(Task), false);
+	if (Completion.IsValid()) PendingScreenshotWrites.Add(MoveTemp(Completion));
+	else UE_LOG(LogTemp, Warning, TEXT("ROADSTER_SCREENSHOT global image queue at capacity; skipped without blocking gameplay"));
 }
 
 bool ARoadsterController::Pressed(const FKey& K) const
@@ -229,6 +315,7 @@ void ARoadsterController::SetMode(EUIMode NewMode)
 void ARoadsterController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
+	UpdateScreenshotBinding();
 	const bool bWasFocused = bControlFocused;
 	bControlFocused = FApp::HasFocus();
 	NativePad.Tick(DeltaTime, bControlFocused);
@@ -252,25 +339,65 @@ void ARoadsterController::PlayerTick(float DeltaTime)
 	// Review runs (shots / timed exit) hold their clock while shaders, meshes and textures are still compiling,
 	// so captures from a cold cache never show placeholder materials (capped at 15 minutes).
 	const bool bReviewRun = ExitAfter > 0.f || ShotIndex < ShotTimes.Num();
-	if (bReviewRun && CompileWaitSeconds < 900.f && FAssetCompilingManager::Get().GetNumRemainingAssets() > 0)
+	const double ReviewNow = FPlatformTime::Seconds();
+	const double WallDelta = ReviewLastWallSeconds > 0 ? ReviewNow - ReviewLastWallSeconds : 0;
+	if (bReviewRun && ReviewConfiguredWallSeconds == 0) ReviewConfiguredWallSeconds = ReviewNow - GStartTime;
+	ReviewLastWallSeconds = ReviewNow;
+	const bool bReviewCompiling = bReviewRun && CompileWaitSeconds < 900.f && FAssetCompilingManager::Get().GetNumRemainingAssets() > 0;
+	if (bReviewCompiling)
 	{
 		if (CompileWaitSeconds == 0.f) UE_LOG(LogTemp, Display, TEXT("ROADSTER_REVIEW waiting for compilation"));
 		CompileWaitSeconds += DeltaTime;
+		ReviewCompileWallSeconds += WallDelta;
 	}
 	else
 	{
 		PlayTime += DeltaTime;
 	}
-	if (ExitAfter > 0.f && PlayTime >= 5.f) { MeasuredFrameTime += DeltaTime; ++MeasuredFrames; ReviewFrameTimes.Add(DeltaTime * 1000.f); }
+	if (ExitAfter > 0.f && PlayTime >= 5.f && !bReviewCompiling && WallDelta > 0)
+	{
+		MeasuredFrameTime += DeltaTime; ++MeasuredFrames;
+		ReviewMeasuredWallSeconds += WallDelta;
+		ReviewFrameTimes.Add(float(WallDelta * 1000.0));
+		FReviewFrame& Frame = ReviewFrames.AddDefaulted_GetRef();
+		Frame.WallSeconds = ReviewNow - GStartTime;
+		Frame.WallMs = float(WallDelta * 1000.0); Frame.EngineMs = DeltaTime * 1000.f;
+		Frame.GameMs = FPlatformTime::ToMilliseconds(GGameThreadTime);
+		Frame.RenderMs = FPlatformTime::ToMilliseconds(GRenderThreadTime);
+		Frame.GPUMs = FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles());
+		Frame.bFocused = FApp::HasFocus(); Frame.bAfterScreenshot = bReviewPreviousScreenshot;
+	}
+	bReviewPreviousScreenshot = false;
 	if (ExitAfter > 0.f && PlayTime >= ExitAfter)
 	{
 		int32 W = 0, H = 0; GetViewportSize(W, H);
 		ReviewFrameTimes.Sort();
-		const float P95 = ReviewFrameTimes.IsEmpty() ? 0.f : ReviewFrameTimes[FMath::Min(ReviewFrameTimes.Num() - 1, FMath::FloorToInt(ReviewFrameTimes.Num() * 0.95f))];
+		auto Percentile = [this](float Fraction)
+		{
+			return ReviewFrameTimes.IsEmpty() ? 0.f : ReviewFrameTimes[FMath::Clamp(FMath::CeilToInt(ReviewFrameTimes.Num() * Fraction) - 1, 0, ReviewFrameTimes.Num() - 1)];
+		};
+		int32 Hitches33 = 0, Hitches50 = 0, Hitches100 = 0, UnfocusedFrames = 0, ScreenshotFrames = 0;
+		double GameMsSum = 0, RenderMsSum = 0, GPUMsSum = 0;
+		FString FrameCSV = TEXT("frame,process_seconds,wall_ms,engine_ms,game_thread_busy_ms,render_thread_busy_ms,gpu_ms,focused,after_screenshot\n");
+		for (int32 Index = 0; Index < ReviewFrames.Num(); ++Index)
+		{
+			const FReviewFrame& Frame = ReviewFrames[Index];
+			Hitches33 += Frame.WallMs > 33.333f; Hitches50 += Frame.WallMs > 50.f; Hitches100 += Frame.WallMs > 100.f;
+			UnfocusedFrames += !Frame.bFocused; ScreenshotFrames += Frame.bAfterScreenshot;
+			GameMsSum += Frame.GameMs; RenderMsSum += Frame.RenderMs; GPUMsSum += Frame.GPUMs;
+			FrameCSV += FString::Printf(TEXT("%d,%.6f,%.4f,%.4f,%.4f,%.4f,%.4f,%d,%d\n"), Index, Frame.WallSeconds, Frame.WallMs, Frame.EngineMs, Frame.GameMs, Frame.RenderMs, Frame.GPUMs, Frame.bFocused ? 1 : 0, Frame.bAfterScreenshot ? 1 : 0);
+		}
 		const IConsoleVariable* Percentage = IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage"));
-		const FString Report = FString::Printf(TEXT("Frames=%d\nElapsedSeconds=%.3f\nAverageFPS=%.2f\nP95FrameMilliseconds=%.2f\nResolution=%dx%d\nScreenPercentage=%.1f\nCompileWaitSeconds=%.1f\nNote=Short review run, excludes first 5 seconds; screenshots can cause hitches.\n"),
-			MeasuredFrames, MeasuredFrameTime, MeasuredFrames / FMath::Max(MeasuredFrameTime, 0.001f), P95, W, H, Percentage ? Percentage->GetFloat() : -1.f, CompileWaitSeconds);
+		const IConsoleVariable* Disable = IConsoleManager::Get().FindConsoleVariable(TEXT("roadster.Disable"));
+		const IConsoleVariable* Idle = IConsoleManager::Get().FindConsoleVariable(TEXT("t.IdleWhenNotForeground"));
+		const float N = FMath::Max(ReviewFrames.Num(), 1);
+		FString Report = FString::Printf(TEXT("Frames=%d\nElapsedSeconds=%.3f\nAverageFPS=%.2f\nP50FrameMilliseconds=%.2f\nP95FrameMilliseconds=%.2f\nP99FrameMilliseconds=%.2f\nMaxFrameMilliseconds=%.2f\nHitchesOver33ms=%d\nHitchesOver50ms=%d\nHitchesOver100ms=%d\nResolution=%dx%d\nScreenPercentage=%.1f\nCompileWaitSeconds=%.3f\nCompileWallSeconds=%.3f\nConfiguredSinceProcessStartSeconds=%.3f\nEngineMeasuredSeconds=%.3f\nAverageGameThreadBusyMilliseconds=%.3f\nAverageRenderThreadBusyMilliseconds=%.3f\nAverageGPUMilliseconds=%.3f\nUnfocusedFrames=%d\nFramesAfterScreenshot=%d\nDisableMask=%d\nIdleWhenNotForeground=%d\nMode=%d\nCamera=%d\nNote=Wall-clock frame intervals after 5s warmup, excludes active asset compilation. Thread and GPU samples are previous-frame estimates; zero GPU timing means unavailable. Base engine frames, not generated display frames.\n"),
+			MeasuredFrames, ReviewMeasuredWallSeconds, MeasuredFrames / FMath::Max(ReviewMeasuredWallSeconds, 0.001), Percentile(.50f), Percentile(.95f), Percentile(.99f), Percentile(1.f), Hitches33, Hitches50, Hitches100,
+			W, H, Percentage ? Percentage->GetFloat() : -1.f, CompileWaitSeconds, ReviewCompileWallSeconds, ReviewConfiguredWallSeconds, MeasuredFrameTime, GameMsSum / N, RenderMsSum / N, GPUMsSum / N,
+			UnfocusedFrames, ScreenshotFrames, Disable ? Disable->GetInt() : 0, Idle ? Idle->GetInt() : -1, (int32)Mode, P ? (int32)P->CameraMode : -1);
+		Report += FString::Printf(TEXT("AsyncPNGEncoding=%d\n"), CVarRoadsterAsyncScreenshots.GetValueOnGameThread());
 		FFileHelper::SaveStringToFile(Report, *(ShotDirectory / TEXT("performance.txt")));
+		FFileHelper::SaveStringToFile(FrameCSV, *(ShotDirectory / TEXT("frames.csv")));
 		UE_LOG(LogTemp, Display, TEXT("ROADSTER_REVIEW %s"), *Report.Replace(TEXT("\n"), TEXT(" ")));
 		ExitAfter = 0.f;
 		ConsoleCommand(TEXT("quit"));
@@ -278,6 +405,7 @@ void ARoadsterController::PlayerTick(float DeltaTime)
 	if (ShotIndex < ShotTimes.Num() && PlayTime >= ShotTimes[ShotIndex])
 	{
 		FScreenshotRequest::RequestScreenshot(ShotDirectory / FString::Printf(TEXT("shot_%02d.png"), ShotIndex), false, false);
+		bReviewPreviousScreenshot = true;
 		++ShotIndex;
 	}
 
@@ -409,7 +537,7 @@ void ARoadsterController::DriveInput(float Dt)
 	if (!bKeys) return;
 
 	if (Pressed(EKeys::C) || PadPressed(EKeys::Gamepad_FaceButton_Top)) P->CycleCamera();
-	if (Pressed(EKeys::V)) { P->CameraMode = P->CameraMode == ERoadsterCamera::Cockpit ? ERoadsterCamera::Chase : ERoadsterCamera::Cockpit; P->LookOffset = FRotator::ZeroRotator; }
+	if (Pressed(EKeys::V)) P->SetCameraMode(P->CameraMode == ERoadsterCamera::Cockpit ? ERoadsterCamera::Chase : ERoadsterCamera::Cockpit);
 	if (Pressed(EKeys::R) || PadPressed(EKeys::Gamepad_LeftThumbstick))
 	{
 		CancelPilot(); if (bRecording) SaveRecording();
@@ -530,6 +658,11 @@ void ARoadsterController::SaveControlSettings()
 	File.SetFloat(TEXT("Controls"), TEXT("CameraSensitivity"), CameraSensitivity);
 	File.SetFloat(TEXT("Controls"), TEXT("CameraDeadzone"), CameraDeadzone);
 	File.SetBool(TEXT("Controls"), TEXT("Haptics"), bHapticsEnabled);
+	if (Car())
+	{
+		File.SetBool(TEXT("Driving"), TEXT("AssistedSteering"), Car()->Sim.Set.bAssistedSteering);
+		File.SetFloat(TEXT("Driving"), TEXT("SteeringGripHeadroom"), static_cast<float>(Car()->Sim.Set.SteeringGripHeadroom));
+	}
 	File.Dirty = true;
 	if (!File.Write(Path)) UE_LOG(LogTemp, Warning, TEXT("Could not save controller tuning to %s"), *Path);
 }

@@ -1,0 +1,5 @@
+DriveabilityChecks.cpp
+E:\TeslaRoadsterSim\Tests\Driveability-20261026\DriveabilityStudy.cpp(21): warning C4244: '=': conversion from 'int' to 'float', possible loss of data
+E:\TeslaRoadsterSim\Tests\Driveability-20261026\DriveabilityStudy.cpp(21): warning C4244: '=': conversion from 'int' to 'float', possible loss of data
+E:\TeslaRoadsterSim\Tests\Driveability-20261026\DriveabilityStudy.cpp(21): warning C4244: '=': conversion from 'int' to 'float', possible loss of data
+E:\TeslaRoadsterSim\Tests\Driveability-20261026\DriveabilityStudy.cpp(23) : warning C4715: 'driveability_diagnostic_main': not all control paths return a value

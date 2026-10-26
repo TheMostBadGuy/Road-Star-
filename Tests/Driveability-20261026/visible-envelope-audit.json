@@ -1,0 +1,1562 @@
+{
+  "captured_at": "2026-10-26T15:02:00.554678-04:00",
+  "head": "935bbac482b4077121013f9e05d5ea42e37d86fd",
+  "method": "Read current FBX vertex arrays with installed pure io_scene_fbx parser; no Blender process, bpy, model edits or engine. Match manifest pivot/wing/door transforms and physics Y-right frame. Other moving parts are stowed. Compare visible support and union to actual compiled16bodyprobes; exclude tyres/suspension/internalparts.",
+  "manifest_sha256": "56F50455F0BADE758024E5F915E9E775353D3251D3DBC2DD774251712B3A5B2D",
+  "rig_sha256": "0A0C88583CA58EB5AD19EAF537148847ADFE2304588D81643541CA1DE0AF16ED",
+  "physics_sha256": "1DEE2F721705F4F7224EDE298862A81FB00546618575B05A748277003075970E",
+  "parser_sha256": "96FE3F11B5C9B2950D9C434857E3B0DB1A1B558510E2AD360B767643A69C2047",
+  "sources": [
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Roadster_Body.fbx",
+      "sha256": "0A172866BCB9EAD1A88577A5FA723BFDEDD159779F0634D384F18D442516ED5C",
+      "vertices": 123182,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Side_Details.fbx",
+      "sha256": "0137AAAE0934BA58AD176087FD04D7FD62F565B6589D940B1398B209376EA8CB",
+      "vertices": 206,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Splitter.fbx",
+      "sha256": "BCDE8F7D071D496025D2CF0529B60619B788164C14BC13EEF79015893949EEA1",
+      "vertices": 18,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Rear_Diffuser.fbx",
+      "sha256": "5F41E9880EED59BC29F51A02ECDE931278F6020DAFC4A2AF45028E252F41CCBE",
+      "vertices": 16,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Winglets.fbx",
+      "sha256": "CE1497BF215B7DE1610C506920D212335805C21AD451B9036432355CD9F0243C",
+      "vertices": 120,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Door_L.fbx",
+      "sha256": "D5D3E776744D77F0F0EEE5AF30D77C09F71570DB4EB0C27AEB7B927C7EF41C7A",
+      "vertices": 14380,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Door_R.fbx",
+      "sha256": "D4C7602D5EB6FDCDF2A31FC999074E744693BBB0430F6FA66D815C2C357EF044",
+      "vertices": 14380,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_DoorGlass_L.fbx",
+      "sha256": "7AD8D80D4162F71EC25524B5764FC930007368207C20023F3C7B8C5C0F7CD19B",
+      "vertices": 10960,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_DoorGlass_R.fbx",
+      "sha256": "9CC4978673AF34293723EEE186AF67ABCA75473E7BE82A02A84F15401596844C",
+      "vertices": 10964,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Rear_Wing.fbx",
+      "sha256": "7C7F1BD4D1707ED0735084E9C06ADC72ACE217F14C7C07466A8C7D836715DE08",
+      "vertices": 19966,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Wing_Struts.fbx",
+      "sha256": "A16ABAA0FDF71324225FDF67BAF80BD275A8B099525572C846A7AC5B504400CC",
+      "vertices": 136,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Barge_L.fbx",
+      "sha256": "01A6A7C7BB5CD4B5FF6D8146353FC0D74047907EE8BC4965ECD3FEE05A66877B",
+      "vertices": 1658,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Barge_R.fbx",
+      "sha256": "9A3F036C3FA8A79E3A11378D770503DF821029FADA508C4655F39C7AD435DA35",
+      "vertices": 1776,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_FrontWing_L.fbx",
+      "sha256": "738F30807CFBB1E41632E902AE31BAB78D84368D5BAC6E2066273A85373BD489",
+      "vertices": 68,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_FrontWing_R.fbx",
+      "sha256": "5165835FC4AFE49DA3AE518F80FFAFF832707B32BD07CE153FE86590E3C922A3",
+      "vertices": 68,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Hood_Vent.fbx",
+      "sha256": "658AA12FA27F45F26CA5E8310E25509717EC03AD3C1869301F93C34D4AF500E3",
+      "vertices": 25600,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_HeadlightCover_L.fbx",
+      "sha256": "66F0B2DA1D59310AB7E3250FA3712860CC8616CC0DB036D159371A72F4178976",
+      "vertices": 438,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_HeadlightCover_R.fbx",
+      "sha256": "5B335155FB13E3B69F0FF533C253CD27BBEA5E28FDAC731361523C4288517A62",
+      "vertices": 438,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Skirt_L.fbx",
+      "sha256": "94D5155CA788FC5895982A569998DAA66146E08B6DB867B313D21EF9AF00979B",
+      "vertices": 16,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Skirt_R.fbx",
+      "sha256": "04206649A6EEE3D4CF5E86038D363563CBE4690B5D4F6E15795A9230B68CBAAA",
+      "vertices": 16,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Skirt_Front.fbx",
+      "sha256": "000E3047190B3015B81D2A836E1752F056C4ACC7FD21790A26761BE4A7BC8B93",
+      "vertices": 32,
+      "fbx_version": 7400
+    },
+    {
+      "path": "E:\\TeslaRoadsterSim\\Blender\\export\\SM_Skirt_Rear.fbx",
+      "sha256": "8F66C254FDDCDD6A129D8E8DF60F6CB14E95A3C666D22FCE87C57013B462998F",
+      "vertices": 32,
+      "fbx_version": 7400
+    }
+  ],
+  "bounds": [
+    {
+      "part": "Roadster_Body",
+      "min_blender_car_m": [
+        -2.0996670722961426,
+        -0.9929842352867126,
+        0.10887030512094498
+      ],
+      "max_blender_car_m": [
+        2.2350006103515625,
+        0.9929842352867126,
+        1.142715334892273
+      ]
+    },
+    {
+      "part": "Side_Details",
+      "min_blender_car_m": [
+        -0.4941945970058441,
+        -0.8736252188682556,
+        0.7871378064155579
+      ],
+      "max_blender_car_m": [
+        0.7587616443634033,
+        0.8736252188682556,
+        1.1182948350906372
+      ]
+    },
+    {
+      "part": "Splitter",
+      "min_blender_car_m": [
+        1.7899999618530273,
+        -0.8999999761581421,
+        0.10499999672174454
+      ],
+      "max_blender_car_m": [
+        2.259999990463257,
+        0.8999999761581421,
+        0.125
+      ]
+    },
+    {
+      "part": "Rear_Diffuser",
+      "min_blender_car_m": [
+        -2.1090002059936523,
+        -0.8100000023841858,
+        0.4700000286102295
+      ],
+      "max_blender_car_m": [
+        -2.0989999771118164,
+        0.8100000023841858,
+        0.6000000238418579
+      ]
+    },
+    {
+      "part": "Winglets",
+      "min_blender_car_m": [
+        0.8619999885559082,
+        -0.9838181138038635,
+        0.6060000061988831
+      ],
+      "max_blender_car_m": [
+        1.1319999694824219,
+        0.9838180541992188,
+        0.6380000114440918
+      ]
+    },
+    {
+      "part": "Door_L",
+      "min_blender_car_m": [
+        -0.36536240577697754,
+        0.7533743977546692,
+        0.2556058168411255
+      ],
+      "max_blender_car_m": [
+        0.8717308044433594,
+        0.9887536764144897,
+        0.9026985764503479
+      ]
+    },
+    {
+      "part": "Door_R",
+      "min_blender_car_m": [
+        -0.36535143852233887,
+        -0.9887536764144897,
+        0.2556058168411255
+      ],
+      "max_blender_car_m": [
+        0.8665861487388611,
+        -0.7533743977546692,
+        0.9026985764503479
+      ]
+    },
+    {
+      "part": "DoorGlass_L",
+      "min_blender_car_m": [
+        -0.4892836809158325,
+        0.15000003576278687,
+        0.780219316482544
+      ],
+      "max_blender_car_m": [
+        0.6609001159667969,
+        0.8778663277626038,
+        1.1439696550369263
+      ]
+    },
+    {
+      "part": "DoorGlass_R",
+      "min_blender_car_m": [
+        -0.4892836809158325,
+        -0.8778663277626038,
+        0.7802193760871887
+      ],
+      "max_blender_car_m": [
+        0.6609001159667969,
+        -0.15000003576278687,
+        1.1439697742462158
+      ]
+    },
+    {
+      "part": "Rear_Wing",
+      "min_blender_car_m": [
+        -2.0828006267547607,
+        -0.9516561627388,
+        0.6354779005050659
+      ],
+      "max_blender_car_m": [
+        -1.6713374853134155,
+        0.9516687989234924,
+        0.985844075679779
+      ]
+    },
+    {
+      "part": "Wing_Struts",
+      "min_blender_car_m": [
+        -1.8783050775527954,
+        -0.39500001072883606,
+        0.527999997138977
+      ],
+      "max_blender_car_m": [
+        -1.7680000066757202,
+        0.39500001072883606,
+        0.9040000438690186
+      ]
+    },
+    {
+      "part": "Barge_L",
+      "min_blender_car_m": [
+        0.7796815037727356,
+        0.8860064744949341,
+        0.24568109214305878
+      ],
+      "max_blender_car_m": [
+        1.1328818798065186,
+        0.9915927648544312,
+        0.5880658030509949
+      ]
+    },
+    {
+      "part": "Barge_R",
+      "min_blender_car_m": [
+        0.7796815037727356,
+        -0.9917295575141907,
+        0.2069346159696579
+      ],
+      "max_blender_car_m": [
+        1.1384797096252441,
+        -0.6230000257492065,
+        0.5912683606147766
+      ]
+    },
+    {
+      "part": "FrontWing_L",
+      "min_blender_car_m": [
+        2.0950000286102295,
+        0.11699999868869781,
+        0.23877760767936707
+      ],
+      "max_blender_car_m": [
+        2.194999933242798,
+        0.5429999828338623,
+        0.24658359587192535
+      ]
+    },
+    {
+      "part": "FrontWing_R",
+      "min_blender_car_m": [
+        2.0950000286102295,
+        -0.5429999828338623,
+        0.23877760767936707
+      ],
+      "max_blender_car_m": [
+        2.194999933242798,
+        -0.11699999868869781,
+        0.24658359587192535
+      ]
+    },
+    {
+      "part": "Hood_Vent",
+      "min_blender_car_m": [
+        1.455700010061264,
+        -0.44684863090515137,
+        0.6229523455258459
+      ],
+      "max_blender_car_m": [
+        1.7730002403259277,
+        0.44684863090515137,
+        0.7363874316215515
+      ]
+    },
+    {
+      "part": "HeadlightCover_L",
+      "min_blender_car_m": [
+        1.9032740592956543,
+        0.6171786785125732,
+        0.4953796863555908
+      ],
+      "max_blender_car_m": [
+        2.1596555709838867,
+        0.7782739400863647,
+        0.6347272396087646
+      ]
+    },
+    {
+      "part": "HeadlightCover_R",
+      "min_blender_car_m": [
+        1.9032740592956543,
+        -0.7782739400863647,
+        0.4953789710998535
+      ],
+      "max_blender_car_m": [
+        2.159655809402466,
+        -0.6171786785125732,
+        0.6347272396087646
+      ]
+    },
+    {
+      "part": "Skirt_L",
+      "min_blender_car_m": [
+        -1.1499998327344656,
+        0.8529999256134033,
+        0.1120000034570694
+      ],
+      "max_blender_car_m": [
+        1.2000000718981028,
+        0.8670001029968262,
+        0.23200000822544098
+      ]
+    },
+    {
+      "part": "Skirt_R",
+      "min_blender_car_m": [
+        -1.1499998327344656,
+        -0.8670000433921814,
+        0.1120000034570694
+      ],
+      "max_blender_car_m": [
+        1.2000000718981028,
+        -0.8529999852180481,
+        0.23200000822544098
+      ]
+    },
+    {
+      "part": "Skirt_Front",
+      "min_blender_car_m": [
+        1.193516492843628,
+        -0.8626387119293213,
+        0.1120000034570694
+      ],
+      "max_blender_car_m": [
+        1.556483507156372,
+        0.8626387119293213,
+        0.23200000822544098
+      ]
+    },
+    {
+      "part": "Skirt_Rear",
+      "min_blender_car_m": [
+        -1.5563470125198364,
+        -0.8629521131515503,
+        0.1120000034570694
+      ],
+      "max_blender_car_m": [
+        -1.1436527967453003,
+        0.8629521131515503,
+        0.23200000822544098
+      ]
+    }
+  ],
+  "states": [
+    {
+      "state": "stowed",
+      "evaluated_vertices": 224470,
+      "planes": [
+        {
+          "normal": [
+            1,
+            0,
+            0
+          ],
+          "visible_support_m": 2.259999990463257,
+          "probe_support_m": 2.2325,
+          "visible_beyond_probe_m": 0.027499990463256907,
+          "witness": {
+            "part": "Splitter",
+            "vertex": 0,
+            "point_physics_m": [
+              2.259999990463257,
+              -0.0,
+              0.125
+            ]
+          }
+        },
+        {
+          "normal": [
+            -1,
+            0,
+            0
+          ],
+          "visible_support_m": 2.1090002059936523,
+          "probe_support_m": 2.1475,
+          "visible_beyond_probe_m": -0.03849979400634762,
+          "witness": {
+            "part": "Rear_Diffuser",
+            "vertex": 0,
+            "point_physics_m": [
+              -2.1090002059936523,
+              0.8100000023841858,
+              0.4700000286102295
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            1,
+            0
+          ],
+          "visible_support_m": 0.9929842352867126,
+          "probe_support_m": 1.03,
+          "visible_beyond_probe_m": -0.03701576471328738,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 103495,
+            "point_physics_m": [
+              -1.1235862970352173,
+              0.9929842352867126,
+              0.6319499015808105
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            -1,
+            0
+          ],
+          "visible_support_m": 0.9929842352867126,
+          "probe_support_m": 1.03,
+          "visible_beyond_probe_m": -0.03701576471328738,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 103145,
+            "point_physics_m": [
+              -1.1235862970352173,
+              -0.9929842352867126,
+              0.6319498419761658
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "visible_support_m": 1.1439697742462158,
+          "probe_support_m": 1.1600000000000001,
+          "visible_beyond_probe_m": -0.016030225753784322,
+          "witness": {
+            "part": "DoorGlass_R",
+            "vertex": 2866,
+            "point_physics_m": [
+              -0.06000000238418579,
+              0.2134748101234436,
+              1.1439697742462158
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            0,
+            -1
+          ],
+          "visible_support_m": -0.10499999672174454,
+          "probe_support_m": -0.06,
+          "visible_beyond_probe_m": -0.04499999672174454,
+          "witness": {
+            "part": "Splitter",
+            "vertex": 9,
+            "point_physics_m": [
+              2.25,
+              -0.0,
+              0.10499999672174454
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.7071067811865475,
+            0.0,
+            0.7071067811865475
+          ],
+          "visible_support_m": 1.910680046330503,
+          "probe_support_m": 1.8458951096125458,
+          "visible_beyond_probe_m": 0.06478493671795715,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 1430,
+            "point_physics_m": [
+              2.2350001335144043,
+              -0.0,
+              0.4671095013618469
+            ]
+          }
+        },
+        {
+          "normal": [
+            -0.7071067811865475,
+            0.0,
+            0.7071067811865475
+          ],
+          "visible_support_m": 2.1521541349932423,
+          "probe_support_m": 1.9189281182015367,
+          "visible_beyond_probe_m": 0.23322601679170551,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 13764,
+            "point_physics_m": [
+              -2.0996668338775635,
+              -0.0,
+              0.9439387321472168
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.0,
+            0.7071067811865475,
+            0.7071067811865475
+          ],
+          "visible_support_m": 1.3003322297876285,
+          "probe_support_m": 1.1623759005323593,
+          "visible_beyond_probe_m": 0.13795632925526924,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 22677,
+            "point_physics_m": [
+              -1.2100000381469727,
+              0.9435191750526428,
+              0.8954282999038696
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.0,
+            -0.7071067811865475,
+            0.7071067811865475
+          ],
+          "visible_support_m": 1.3003322297876285,
+          "probe_support_m": 1.1623759005323593,
+          "visible_beyond_probe_m": 0.13795632925526924,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 11823,
+            "point_physics_m": [
+              -1.2100000381469727,
+              -0.9435191750526428,
+              0.8954282999038696
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.7071067811865475,
+            0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.080085215675736,
+          "probe_support_m": 2.049742872721048,
+          "visible_beyond_probe_m": 0.03034234295468785,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 15378,
+            "point_physics_m": [
+              2.0399999618530273,
+              0.9016847610473633,
+              0.42494332790374756
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.7071067811865475,
+            -0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.08008538426313,
+          "probe_support_m": 2.049742872721048,
+          "visible_beyond_probe_m": 0.030342511542082118,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 3880,
+            "point_physics_m": [
+              2.0400002002716064,
+              -0.9016847610473633,
+              0.42494329810142517
+            ]
+          }
+        },
+        {
+          "normal": [
+            -0.7071067811865475,
+            0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.1182416848633157,
+          "probe_support_m": 2.042065203191384,
+          "visible_beyond_probe_m": 0.07617648167193147,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 24284,
+            "point_physics_m": [
+              -2.0970001220703125,
+              0.8986459970474243,
+              0.744775652885437
+            ]
+          }
+        },
+        {
+          "normal": [
+            -0.7071067811865475,
+            -0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.1182416848633157,
+          "probe_support_m": 2.042065203191384,
+          "visible_beyond_probe_m": 0.07617648167193147,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 13496,
+            "point_physics_m": [
+              -2.0970001220703125,
+              -0.8986459970474243,
+              0.744775652885437
+            ]
+          }
+        }
+      ],
+      "largest_local_feature_gap_m": 0.8576954772887612,
+      "local_feature_witness": {
+        "part": "Roadster_Body",
+        "vertex": 6930,
+        "point_physics_m": [
+          1.100000023841858,
+          -0.5531221628189087,
+          0.8947292566299438
+        ]
+      }
+    },
+    {
+      "state": "wing_low_drag",
+      "evaluated_vertices": 224470,
+      "planes": [
+        {
+          "normal": [
+            1,
+            0,
+            0
+          ],
+          "visible_support_m": 2.259999990463257,
+          "probe_support_m": 2.2325,
+          "visible_beyond_probe_m": 0.027499990463256907,
+          "witness": {
+            "part": "Splitter",
+            "vertex": 0,
+            "point_physics_m": [
+              2.259999990463257,
+              -0.0,
+              0.125
+            ]
+          }
+        },
+        {
+          "normal": [
+            -1,
+            0,
+            0
+          ],
+          "visible_support_m": 2.3101906187957644,
+          "probe_support_m": 2.1475,
+          "visible_beyond_probe_m": 0.1626906187957644,
+          "witness": {
+            "part": "Rear_Wing",
+            "vertex": 9445,
+            "point_physics_m": [
+              -2.3101906187957644,
+              0.8842350244522095,
+              0.9361729264847998
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            1,
+            0
+          ],
+          "visible_support_m": 0.9929842352867126,
+          "probe_support_m": 1.03,
+          "visible_beyond_probe_m": -0.03701576471328738,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 103495,
+            "point_physics_m": [
+              -1.1235862970352173,
+              0.9929842352867126,
+              0.6319499015808105
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            -1,
+            0
+          ],
+          "visible_support_m": 0.9929842352867126,
+          "probe_support_m": 1.03,
+          "visible_beyond_probe_m": -0.03701576471328738,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 103145,
+            "point_physics_m": [
+              -1.1235862970352173,
+              -0.9929842352867126,
+              0.6319498419761658
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "visible_support_m": 1.2398180391706581,
+          "probe_support_m": 1.1600000000000001,
+          "visible_beyond_probe_m": 0.079818039170658,
+          "witness": {
+            "part": "Rear_Wing",
+            "vertex": 227,
+            "point_physics_m": [
+              -1.9265208155419207,
+              -0.6556644439697266,
+              1.2398180391706581
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            0,
+            -1
+          ],
+          "visible_support_m": -0.10499999672174454,
+          "probe_support_m": -0.06,
+          "visible_beyond_probe_m": -0.04499999672174454,
+          "witness": {
+            "part": "Splitter",
+            "vertex": 9,
+            "point_physics_m": [
+              2.25,
+              -0.0,
+              0.10499999672174454
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.7071067811865475,
+            0.0,
+            0.7071067811865475
+          ],
+          "visible_support_m": 1.910680046330503,
+          "probe_support_m": 1.8458951096125458,
+          "visible_beyond_probe_m": 0.06478493671795715,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 1430,
+            "point_physics_m": [
+              2.2350001335144043,
+              -0.0,
+              0.4671095013618469
+            ]
+          }
+        },
+        {
+          "normal": [
+            -0.7071067811865475,
+            0.0,
+            0.7071067811865475
+          ],
+          "visible_support_m": 2.486474745672579,
+          "probe_support_m": 1.9189281182015367,
+          "visible_beyond_probe_m": 0.5675466274710423,
+          "witness": {
+            "part": "Rear_Wing",
+            "vertex": 9948,
+            "point_physics_m": [
+              -2.280535112315632,
+              -0.6351927518844604,
+              1.235871195512722
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.0,
+            0.7071067811865475,
+            0.7071067811865475
+          ],
+          "visible_support_m": 1.4743280719123777,
+          "probe_support_m": 1.1623759005323593,
+          "visible_beyond_probe_m": 0.3119521713800184,
+          "witness": {
+            "part": "Rear_Wing",
+            "vertex": 5666,
+            "point_physics_m": [
+              -2.003940918598695,
+              0.9186258912086487,
+              1.166388863477212
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.0,
+            -0.7071067811865475,
+            0.7071067811865475
+          ],
+          "visible_support_m": 1.4743280719123777,
+          "probe_support_m": 1.1623759005323593,
+          "visible_beyond_probe_m": 0.3119521713800184,
+          "witness": {
+            "part": "Rear_Wing",
+            "vertex": 781,
+            "point_physics_m": [
+              -2.003940918598695,
+              -0.9186258912086487,
+              1.166388863477212
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.7071067811865475,
+            0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.080085215675736,
+          "probe_support_m": 2.049742872721048,
+          "visible_beyond_probe_m": 0.03034234295468785,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 15378,
+            "point_physics_m": [
+              2.0399999618530273,
+              0.9016847610473633,
+              0.42494332790374756
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.7071067811865475,
+            -0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.08008538426313,
+          "probe_support_m": 2.049742872721048,
+          "visible_beyond_probe_m": 0.030342511542082118,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 3880,
+            "point_physics_m": [
+              2.0400002002716064,
+              -0.9016847610473633,
+              0.42494329810142517
+            ]
+          }
+        },
+        {
+          "normal": [
+            -0.7071067811865475,
+            0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.264890707055251,
+          "probe_support_m": 2.042065203191384,
+          "visible_beyond_probe_m": 0.2228255038638669,
+          "witness": {
+            "part": "Rear_Wing",
+            "vertex": 9824,
+            "point_physics_m": [
+              -2.3026978828561986,
+              0.900341272354126,
+              1.0066398194806252
+            ]
+          }
+        },
+        {
+          "normal": [
+            -0.7071067811865475,
+            -0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.264890707055251,
+          "probe_support_m": 2.042065203191384,
+          "visible_beyond_probe_m": 0.2228255038638669,
+          "witness": {
+            "part": "Rear_Wing",
+            "vertex": 9981,
+            "point_physics_m": [
+              -2.3026978828561986,
+              -0.900341272354126,
+              1.0066398194806252
+            ]
+          }
+        }
+      ],
+      "largest_local_feature_gap_m": 0.8576954772887612,
+      "local_feature_witness": {
+        "part": "Roadster_Body",
+        "vertex": 6930,
+        "point_physics_m": [
+          1.100000023841858,
+          -0.5531221628189087,
+          0.8947292566299438
+        ]
+      }
+    },
+    {
+      "state": "wing_high_downforce",
+      "evaluated_vertices": 224470,
+      "planes": [
+        {
+          "normal": [
+            1,
+            0,
+            0
+          ],
+          "visible_support_m": 2.259999990463257,
+          "probe_support_m": 2.2325,
+          "visible_beyond_probe_m": 0.027499990463256907,
+          "witness": {
+            "part": "Splitter",
+            "vertex": 0,
+            "point_physics_m": [
+              2.259999990463257,
+              -0.0,
+              0.125
+            ]
+          }
+        },
+        {
+          "normal": [
+            -1,
+            0,
+            0
+          ],
+          "visible_support_m": 2.3552004898925536,
+          "probe_support_m": 2.1475,
+          "visible_beyond_probe_m": 0.20770048989255363,
+          "witness": {
+            "part": "Rear_Wing",
+            "vertex": 9445,
+            "point_physics_m": [
+              -2.3552004898925536,
+              0.8842350244522095,
+              0.9995406370934169
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            1,
+            0
+          ],
+          "visible_support_m": 0.9929842352867126,
+          "probe_support_m": 1.03,
+          "visible_beyond_probe_m": -0.03701576471328738,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 103495,
+            "point_physics_m": [
+              -1.1235862970352173,
+              0.9929842352867126,
+              0.6319499015808105
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            -1,
+            0
+          ],
+          "visible_support_m": 0.9929842352867126,
+          "probe_support_m": 1.03,
+          "visible_beyond_probe_m": -0.03701576471328738,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 103145,
+            "point_physics_m": [
+              -1.1235862970352173,
+              -0.9929842352867126,
+              0.6319498419761658
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "visible_support_m": 1.2840352785908336,
+          "probe_support_m": 1.1600000000000001,
+          "visible_beyond_probe_m": 0.12403527859083341,
+          "witness": {
+            "part": "Rear_Wing",
+            "vertex": 9948,
+            "point_physics_m": [
+              -2.256401195956906,
+              -0.6351927518844604,
+              1.2840352785908336
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            0,
+            -1
+          ],
+          "visible_support_m": -0.10499999672174454,
+          "probe_support_m": -0.06,
+          "visible_beyond_probe_m": -0.04499999672174454,
+          "witness": {
+            "part": "Splitter",
+            "vertex": 9,
+            "point_physics_m": [
+              2.25,
+              -0.0,
+              0.10499999672174454
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.7071067811865475,
+            0.0,
+            0.7071067811865475
+          ],
+          "visible_support_m": 1.910680046330503,
+          "probe_support_m": 1.8458951096125458,
+          "visible_beyond_probe_m": 0.06478493671795715,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 1430,
+            "point_physics_m": [
+              2.2350001335144043,
+              -0.0,
+              0.4671095013618469
+            ]
+          }
+        },
+        {
+          "normal": [
+            -0.7071067811865475,
+            0.0,
+            0.7071067811865475
+          ],
+          "visible_support_m": 2.5034666395129,
+          "probe_support_m": 1.9189281182015367,
+          "visible_beyond_probe_m": 0.5845385213113632,
+          "witness": {
+            "part": "Rear_Wing",
+            "vertex": 9948,
+            "point_physics_m": [
+              -2.256401195956906,
+              -0.6351927518844604,
+              1.2840352785908336
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.0,
+            0.7071067811865475,
+            0.7071067811865475
+          ],
+          "visible_support_m": 1.5007049507995762,
+          "probe_support_m": 1.1623759005323593,
+          "visible_beyond_probe_m": 0.33832905026721694,
+          "witness": {
+            "part": "Rear_Wing",
+            "vertex": 9851,
+            "point_physics_m": [
+              -2.2677794112472327,
+              0.8713392019271851,
+              1.2509780926140242
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.0,
+            -0.7071067811865475,
+            0.7071067811865475
+          ],
+          "visible_support_m": 1.500704910948948,
+          "probe_support_m": 1.1623759005323593,
+          "visible_beyond_probe_m": 0.3383290104165888,
+          "witness": {
+            "part": "Rear_Wing",
+            "vertex": 9895,
+            "point_physics_m": [
+              -2.267779430652607,
+              -0.8713392019271851,
+              1.2509780362567253
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.7071067811865475,
+            0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.080085215675736,
+          "probe_support_m": 2.049742872721048,
+          "visible_beyond_probe_m": 0.03034234295468785,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 15378,
+            "point_physics_m": [
+              2.0399999618530273,
+              0.9016847610473633,
+              0.42494332790374756
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.7071067811865475,
+            -0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.08008538426313,
+          "probe_support_m": 2.049742872721048,
+          "visible_beyond_probe_m": 0.030342511542082118,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 3880,
+            "point_physics_m": [
+              2.0400002002716064,
+              -0.9016847610473633,
+              0.42494329810142517
+            ]
+          }
+        },
+        {
+          "normal": [
+            -0.7071067811865475,
+            0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.290626819409713,
+          "probe_support_m": 2.042065203191384,
+          "visible_beyond_probe_m": 0.24856161621832884,
+          "witness": {
+            "part": "Rear_Wing",
+            "vertex": 9445,
+            "point_physics_m": [
+              -2.3552004898925536,
+              0.8842350244522095,
+              0.9995406370934169
+            ]
+          }
+        },
+        {
+          "normal": [
+            -0.7071067811865475,
+            -0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.2906266462855287,
+          "probe_support_m": 2.042065203191384,
+          "visible_beyond_probe_m": 0.24856144309414452,
+          "witness": {
+            "part": "Rear_Wing",
+            "vertex": 4580,
+            "point_physics_m": [
+              -2.355200245057984,
+              -0.8842350244522095,
+              0.9995406158292189
+            ]
+          }
+        }
+      ],
+      "largest_local_feature_gap_m": 0.8576954772887612,
+      "local_feature_witness": {
+        "part": "Roadster_Body",
+        "vertex": 6930,
+        "point_physics_m": [
+          1.100000023841858,
+          -0.5531221628189087,
+          0.8947292566299438
+        ]
+      }
+    },
+    {
+      "state": "doors_open",
+      "evaluated_vertices": 224470,
+      "planes": [
+        {
+          "normal": [
+            1,
+            0,
+            0
+          ],
+          "visible_support_m": 2.259999990463257,
+          "probe_support_m": 2.2325,
+          "visible_beyond_probe_m": 0.027499990463256907,
+          "witness": {
+            "part": "Splitter",
+            "vertex": 0,
+            "point_physics_m": [
+              2.259999990463257,
+              -0.0,
+              0.125
+            ]
+          }
+        },
+        {
+          "normal": [
+            -1,
+            0,
+            0
+          ],
+          "visible_support_m": 2.1090002059936523,
+          "probe_support_m": 2.1475,
+          "visible_beyond_probe_m": -0.03849979400634762,
+          "witness": {
+            "part": "Rear_Diffuser",
+            "vertex": 0,
+            "point_physics_m": [
+              -2.1090002059936523,
+              0.8100000023841858,
+              0.4700000286102295
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            1,
+            0
+          ],
+          "visible_support_m": 1.3359773116272726,
+          "probe_support_m": 1.03,
+          "visible_beyond_probe_m": 0.3059773116272726,
+          "witness": {
+            "part": "Door_R",
+            "vertex": 314,
+            "point_physics_m": [
+              0.3782787857396913,
+              1.3359773116272726,
+              0.6436184195157068
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            -1,
+            0
+          ],
+          "visible_support_m": 1.3359773116272726,
+          "probe_support_m": 1.03,
+          "visible_beyond_probe_m": 0.3059773116272726,
+          "witness": {
+            "part": "Door_L",
+            "vertex": 314,
+            "point_physics_m": [
+              0.3782787857396913,
+              -1.3359773116272726,
+              0.6436184195157068
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            0,
+            1
+          ],
+          "visible_support_m": 1.9134799488523115,
+          "probe_support_m": 1.1600000000000001,
+          "visible_beyond_probe_m": 0.7534799488523114,
+          "witness": {
+            "part": "DoorGlass_L",
+            "vertex": 4939,
+            "point_physics_m": [
+              0.5394902451852915,
+              -0.38685846904300847,
+              1.9134799488523115
+            ]
+          }
+        },
+        {
+          "normal": [
+            0,
+            0,
+            -1
+          ],
+          "visible_support_m": -0.10499999672174454,
+          "probe_support_m": -0.06,
+          "visible_beyond_probe_m": -0.04499999672174454,
+          "witness": {
+            "part": "Splitter",
+            "vertex": 9,
+            "point_physics_m": [
+              2.25,
+              -0.0,
+              0.10499999672174454
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.7071067811865475,
+            0.0,
+            0.7071067811865475
+          ],
+          "visible_support_m": 1.910680046330503,
+          "probe_support_m": 1.8458951096125458,
+          "visible_beyond_probe_m": 0.06478493671795715,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 1430,
+            "point_physics_m": [
+              2.2350001335144043,
+              -0.0,
+              0.4671095013618469
+            ]
+          }
+        },
+        {
+          "normal": [
+            -0.7071067811865475,
+            0.0,
+            0.7071067811865475
+          ],
+          "visible_support_m": 2.1521541349932423,
+          "probe_support_m": 1.9189281182015367,
+          "visible_beyond_probe_m": 0.23322601679170551,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 13764,
+            "point_physics_m": [
+              -2.0996668338775635,
+              -0.0,
+              0.9439387321472168
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.0,
+            0.7071067811865475,
+            0.7071067811865475
+          ],
+          "visible_support_m": 2.064653256054549,
+          "probe_support_m": 1.1623759005323593,
+          "visible_beyond_probe_m": 0.9022773555221897,
+          "witness": {
+            "part": "Door_R",
+            "vertex": 5071,
+            "point_physics_m": [
+              0.37072509695791317,
+              1.302171799924956,
+              1.6176888363851583
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.0,
+            -0.7071067811865475,
+            0.7071067811865475
+          ],
+          "visible_support_m": 2.064653256054549,
+          "probe_support_m": 1.1623759005323593,
+          "visible_beyond_probe_m": 0.9022773555221897,
+          "witness": {
+            "part": "Door_L",
+            "vertex": 5066,
+            "point_physics_m": [
+              0.37072509695791317,
+              -1.302171799924956,
+              1.6176888363851583
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.7071067811865475,
+            0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.080085215675736,
+          "probe_support_m": 2.049742872721048,
+          "visible_beyond_probe_m": 0.03034234295468785,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 15378,
+            "point_physics_m": [
+              2.0399999618530273,
+              0.9016847610473633,
+              0.42494332790374756
+            ]
+          }
+        },
+        {
+          "normal": [
+            0.7071067811865475,
+            -0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.08008538426313,
+          "probe_support_m": 2.049742872721048,
+          "visible_beyond_probe_m": 0.030342511542082118,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 3880,
+            "point_physics_m": [
+              2.0400002002716064,
+              -0.9016847610473633,
+              0.42494329810142517
+            ]
+          }
+        },
+        {
+          "normal": [
+            -0.7071067811865475,
+            0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.1182416848633157,
+          "probe_support_m": 2.042065203191384,
+          "visible_beyond_probe_m": 0.07617648167193147,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 24284,
+            "point_physics_m": [
+              -2.0970001220703125,
+              0.8986459970474243,
+              0.744775652885437
+            ]
+          }
+        },
+        {
+          "normal": [
+            -0.7071067811865475,
+            -0.7071067811865475,
+            0.0
+          ],
+          "visible_support_m": 2.1182416848633157,
+          "probe_support_m": 2.042065203191384,
+          "visible_beyond_probe_m": 0.07617648167193147,
+          "witness": {
+            "part": "Roadster_Body",
+            "vertex": 13496,
+            "point_physics_m": [
+              -2.0970001220703125,
+              -0.8986459970474243,
+              0.744775652885437
+            ]
+          }
+        }
+      ],
+      "largest_local_feature_gap_m": 1.16689436776256,
+      "local_feature_witness": {
+        "part": "Door_L",
+        "vertex": 5648,
+        "point_physics_m": [
+          0.6746468012394207,
+          -0.9206697678523286,
+          1.7680304935792925
+        ]
+      }
+    }
+  ],
+  "limits": "Geometric representation audit only; exact live component transforms/import settings and UWorld tests remain required. Positive plane gap proves these proxies cannot protect all sampled visible vertices in that pose. Union gap identifies a finite local-feature counterexample, not a manufacturer collision hull."
+}

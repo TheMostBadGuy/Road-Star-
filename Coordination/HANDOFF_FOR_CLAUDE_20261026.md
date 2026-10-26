@@ -1,0 +1,32 @@
+# Blender geometry handoff to Claude — 26 October 2026
+
+Current ownership: Claude owns car modeling. Codex geometry work is stopped; no canonical geometry was changed or promoted by this agent. Root owns Unreal and integration. Preserve the existing files and working tree.
+
+## Current verified state
+
+At HEAD `935bbac`, the canonical `Blender/Roadster.blend`, `Blender/export/SM_Roadster_Body.fbx`, `Blender/export/SM_Front_Lights.fbx`, and `Blender/scripts/roadster_transform.py` still have exactly the pre-candidate hashes in `Verification-20261026/Geometry/CandidateHeadlights/FullCandidate/build_record.json`. The RT source still uses the original `socket(... depth_fn=depth)` headlight cavity and original sloping jewel bank. The measured-sweep headlight candidate was **not integrated**. Runtime beam placement was changed separately to candidate coordinates, so source geometry and that beam assumption currently differ.
+
+No new Blender export/import or Unreal process was run during this resumed audit. Old promotion scripts must not be applied blindly.
+
+## Confirmed defects and evidence
+
+- Original headlight covers intersect their fixed cavity/fixture throughout the sampled 0–11 degree travel. `Verification-20261026/Geometry/headlight_sweep.json` contains the original 45 poses per side (0.25-degree increments), fixed face IDs/materials and emitter geometry. Closed L: 66 proper triangle crossings above 10 micrometres, maximum local triangle-plane crossing metric 5.09 mm. At 11 degrees: 326 proper crossings, maximum metric 11.88 mm. This metric is a local surface crossing measurement, not total solid penetration depth.
+- `roadster_transform.split_door_trim` mistakenly transfers part of the fixed windshield header into DoorGlass. `Geometry/fixed_header_ownership.json` and `audit_fixed_header.py` reconstruct only `frame_and_braces`, apply the exact split predicate, and identify 53 selected fixed-header faces per side (0.00422 m²), of which 49 per side exactly match saved DoorGlass polygons at 1e-5 m. Example L face 10722; region x approximately 0.289–0.291 m, y 0.16–0.34 m, z 1.03–1.07 m. Fixed header must remain fixed; intended headliner faces should be tagged separately before roof-trim extraction. No deletion or canonical patch was applied.
+- The initial UE cockpit's large jagged exposure was primarily missing runtime Door/Glass/roof-trim components, subsequently restored by Root. `Geometry/cockpit_ids.png`, `cockpit_ray_hits.json` and `localize_cockpit.py` map the actual saved geometry at runtime eye (-0.08, +0.38, 0.98 m), pitch -6°, horizontal FOV80. The exposed diagonal A-pillar band includes the body's black door-jamb socket ahead of the padded interior frame. Remaining opaque trim/pillar relationships need independent modeling review; a glass-material change cannot resolve them.
+
+## Isolated headlight candidate — useful proof, not accepted integration
+
+Folder: `Verification-20261026/Geometry/CandidateHeadlights/`.
+
+- `headlight_functions.txt`, `scripts/roadster_transform.py`, and `headlight_source.patch` are isolated source proposals. They retain the actual saved 438-vertex covers and exact pivots (0.0 mm symmetric vertex distance), construct a symmetric measured swept cavity with 2.5 mm clearance and an aft recess, and fit fixed forward-facing jewels/DRL to the real cover silhouette. Fixture housings follow their elements instead of a tall rectangular box piercing the curved hood.
+- `candidate_headlight_verification.json`, `build_verify.log`, `finish_evidence.log`: 45 poses per side; final local candidate has zero raw triangle intersection pairs, approximately 2.5 mm minimum sampled clearance, 110/110 luminous sample rays blocked when closed and 110/110 unobstructed at 11 degrees per side. This is finite sampled coverage, not proof of every pose/all car parts.
+- `headlight_closed.png` / `headlight_open.png` are CPU closeups, not UE acceptance. Closed emission is disabled to demonstrate the intended inactive state; geometry stays present. Earlier cavity attempts overcut a broad oblique aperture; the latest source removes the broad housing/optical-channel overcut. The final intentional shutline and actual runtime appearance still require Claude/Root visual acceptance. Do not infer full aperture sealing from forward ray tests alone.
+- `HeadlightsCandidate.blend` contains only a body/headlight demonstration plus hidden diagnostic comparison objects. It must **not** replace the complete canonical scene.
+- `FullCandidate/RoadsterCandidate.blend` contains 107 meshes. Its `full_headlight_verification.json` passes the headlight sweep against all visible car geometry, but the **overall report is false** because rebuilding unrelated moving parts changed their geometry: Door_R ~12.99 mm, DoorGlass_R ~3.05 mm, Rear_Wing ~16.74 mm, Barge_L ~4.27 mm symmetric vertex differences. This is existing inset/weld iteration nondeterminism, not permission to replace those parts. A preservation assembly replacing only verified affected meshes in the existing canonical scene was proposed but **not implemented** before ownership transferred.
+- `integrate_headlights.py` is an **unrun, incomplete handoff utility** whose promotion guard requires the full report to pass. It should not be used without reconciling the fresh baseline, preserving unrelated meshes, and revalidating current geometry/export contracts. No RoadsterRig.h change is needed for unchanged cover pivots/travel. Reimport only genuinely affected parts, preserve UE material references by slot name, including Root's new thin-glass assignment on Body.
+
+Candidate fixed jewel average centers (Blender metres): L `(1.845000, +0.696065, 0.595249)`, R mirrored Y. Surface normals `(+1,0,0)`. Suggested beam exit was 10 mm ahead of the mean original closed-cover ray intersection: `(1.946303, +/-0.696065, 0.595249)`. These are modeled estimates requiring open-cover runtime validation, not manufacturer photometry.
+
+## Coverage still open
+
+No complete current-car self-clipping proof exists. Full steer × bump/rebound wheel envelopes, suspension joints versus body, doors/glass/header throughout travel, yoke, wing/struts, skirts, nozzle surroundings and combinations of actuators remain to be audited. Distinguish intended bearing/joint contact from actual surface crossings. Existing source/build/runtime PASS reports do not establish geometry clearance or gameplay approval.

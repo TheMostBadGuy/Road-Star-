@@ -1,0 +1,10 @@
+PASS | runtime light load defaults to zero without changing base auxiliary estimate | 0
+PASS | one kW of lighting over3.6seconds consumes exactly0.001kWh extra | 0.000999999995386247
+PASS | power telemetry includes the actual sanitized light load | 1
+PASS | accessory load cannot change the vehicle force trajectory | 0
+PASS | negative or nonfinite light input contributes zero finite power | 1.2
+PASS | negative or nonfinite light input contributes zero finite power | 1.2
+PASS | negative or nonfinite light input contributes zero finite power | 1.2
+PASS | negative or nonfinite light input contributes zero finite power | 1.2
+PASS | finite empty battery cannot become negative under lamp demand | 0
+RESULT 9/9 passed
